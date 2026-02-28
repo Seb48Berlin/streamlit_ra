@@ -119,6 +119,25 @@ def save_cache(data):
 
 # ── API fetchers ──────────────────────────────────────────────────────────────
 
+# Keywords that confirm free entry on the actual RA event page
+FREE_ENTRY_PATTERNS = re.compile(
+    r'free\s*entry|free\s*admission|no\s*cover|eintritt\s*frei|free\s*entrance|gratuit',
+    re.IGNORECASE
+)
+
+
+def verify_free_entry(url):
+    """Fetch the actual RA event page and confirm free entry is mentioned."""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; bot/1.0)"}
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return True  # keep if page unreachable
+        return bool(FREE_ENTRY_PATTERNS.search(resp.text))
+    except Exception:
+        return True  # keep on error
+
+
 def build_queries(now):
     m1, m2, y1, y2 = get_search_months(now)
     queries = [
@@ -129,11 +148,13 @@ def build_queries(now):
     return queries
 
 
-def fetch_via_serpapi(serpapi_key, now):
+def fetch_via_serpapi(serpapi_key, now, status_placeholder=None):
     queries = build_queries(now)
-    all_events = []
+    candidates = []
     seen_urls = set()
     errors = []
+
+    # Step 1: collect all candidates from Google search
     for q in queries:
         params = {"engine": "google", "q": q, "api_key": serpapi_key, "num": 20}
         try:
@@ -147,10 +168,9 @@ def fetch_via_serpapi(serpapi_key, now):
                 raw_title = re.sub(r'\s*[⟋|]\s*RA\s*$', '', r.get("title", "")).strip()
                 clean_title = remove_noise(raw_title)
                 raw_snippet = r.get("snippet", "")
-                # Full subheading: strip before dash, remove free entry, keep rest
                 full_sub = remove_noise(clean_subheading(raw_snippet))
                 sort_val, date_display = parse_date(full_sub)
-                all_events.append({
+                candidates.append({
                     "title": clean_title,
                     "url": href,
                     "date_display": date_display,
@@ -159,8 +179,18 @@ def fetch_via_serpapi(serpapi_key, now):
                 })
         except Exception as e:
             errors.append(str(e))
-    all_events.sort(key=lambda x: x["date_sort"])
-    return all_events, (", ".join(errors) if errors else None)
+
+    # Step 2: verify each RA page actually says "free entry"
+    verified = []
+    total = len(candidates)
+    for i, ev in enumerate(candidates):
+        if status_placeholder:
+            status_placeholder.info("Verifying {}/{}: {}…".format(i + 1, total, ev["title"][:50]))
+        if verify_free_entry(ev["url"]):
+            verified.append(ev)
+
+    verified.sort(key=lambda x: x["date_sort"])
+    return verified, (", ".join(errors) if errors else None)
 
 
 def fetch_via_anthropic(api_key, now):
@@ -321,11 +351,13 @@ if should_fetch:
         if no_cache_yet:
             st.info("👈 Log in as admin and enter your API key to load events for the first time.")
     else:
+        status = st.empty()
         with st.spinner("Fetching events…"):
             if "Anthropic" in backend:
                 raw, error = fetch_via_anthropic(api_key, now)
             else:
-                raw, error = fetch_via_serpapi(serpapi_key, now)
+                raw, error = fetch_via_serpapi(serpapi_key, now, status_placeholder=status)
+        status.empty()
 
         if error:
             st.error("Fetch error: {}".format(error))
