@@ -47,16 +47,25 @@ def next_slot(now):
 
 
 def remove_noise(text):
-    """Remove 'free entry', bracketed * variants, extra spaces."""
-    # Remove (*free entry*), [free entry], (free entry), * free entry * etc.
-    text = re.sub(r'[\(\[]\s*\*?\s*free\s*entry\s*\*?\s*[\)\]]', '', text, flags=re.IGNORECASE)
-    # Remove standalone free entry with optional surrounding *
-    text = re.sub(r'\*?\s*\bfree\s*entry\b\s*\*?', '', text, flags=re.IGNORECASE)
-    # Remove leftover asterisks
+    """Remove 'free entry' in all variants: brackets, asterisks, dots, separators."""
+    # Remove bracketed/asterisked variants: (free entry), [*free entry*], (*free entry*) etc.
+    text = re.sub(r'[\(\[]\s*\*?\s*free\s*entry\s*\*?\s*[\)\]]', ' ', text, flags=re.IGNORECASE)
+    # Remove with surrounding separators: · free entry ·, - free entry -, | free entry |
+    text = re.sub(r'[·\-–—|]\s*\*?\s*free\s*entry\s*\*?\s*(?=[·\-–—|]|$)', ' ', text, flags=re.IGNORECASE)
+    text = re.sub(r'(?:^|(?<=[·\-–—|]))\s*\*?\s*free\s*entry\s*\*?\s*[·\-–—|]', ' ', text, flags=re.IGNORECASE)
+    # Remove any remaining free entry with optional asterisks
+    text = re.sub(r'\*?\s*free\s*entry\s*\*?', ' ', text, flags=re.IGNORECASE)
+    # Remove leftover lone asterisks
     text = re.sub(r'\*', '', text)
-    # Clean multiple spaces / stray punctuation
+    # Collapse multiple separators: ··, --, · ·, etc.
+    text = re.sub(r'([·\-–—|])\s*\1+', r'\1', text)
+    text = re.sub(r'\s*[·\-–—|]\s*$', '', text)   # trailing separator
+    text = re.sub(r'^\s*[·\-–—|]\s*', '', text)   # leading separator
+    # Ensure space between words that got joined (e.g. "BerlinNight")
+    text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
+    # Collapse multiple spaces
     text = re.sub(r'\s{2,}', ' ', text)
-    text = text.strip().strip(',').strip('–').strip('-').strip()
+    text = text.strip().strip(',').strip()
     return text
 
 
@@ -130,8 +139,8 @@ def fetch_via_serpapi(serpapi_key, now):
                 raw_title = re.sub(r'\s*[⟋|]\s*RA\s*$', '', r.get("title", "")).strip()
                 clean_title = remove_noise(raw_title)
                 raw_snippet = r.get("snippet", "")
-                # Full subheading: strip before dash, keep entire rest
-                full_sub = clean_subheading(raw_snippet)
+                # Full subheading: strip before dash, remove free entry, keep rest
+                full_sub = remove_noise(clean_subheading(raw_snippet))
                 sort_val, date_display = parse_date(full_sub)
                 all_events.append({
                     "title": clean_title,
@@ -188,7 +197,7 @@ Only ra.co/events URLs. No markdown. Return valid JSON array only."""
                     "url": ev.get("url", ""),
                     "date_display": ev.get("date_display", ""),
                     "date_sort": ds,
-                    "subtitle": ev.get("subtitle", ""),
+                    "subtitle": remove_noise(ev.get("subtitle", "")),
                 })
             events.sort(key=lambda x: x["date_sort"])
             return events, None
