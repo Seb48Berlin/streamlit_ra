@@ -69,11 +69,13 @@ def clean_subheading(text):
 
 
 def parse_date(sub):
-    m = re.search(r'(\d{1,2})\s+([A-Za-z]{3})', sub)
-    if m:
+    """Find the first occurrence of 'D MonthAbbr' where MonthAbbr is a real month."""
+    for m in re.finditer(r'(\d{1,2})\s+([A-Za-z]{3,4})', sub):
         day = int(m.group(1))
-        mon_num = MONTH_ORDER.get(m.group(2).lower(), 99)
-        return mon_num * 100 + day, "{} {}".format(day, m.group(2).capitalize())
+        mon_str = m.group(2).lower()[:3]  # take first 3 chars to handle "Mar." etc.
+        mon_num = MONTH_ORDER.get(mon_str)
+        if mon_num and 1 <= day <= 31:
+            return mon_num * 100 + day, "{} {}".format(day, mon_str.capitalize())
     return 9999, ""
 
 
@@ -128,7 +130,7 @@ def fetch_via_serpapi(serpapi_key, now):
                 raw_title = re.sub(r'\s*[⟋|]\s*RA\s*$', '', r.get("title", "")).strip()
                 clean_title = remove_noise(raw_title)
                 raw_snippet = r.get("snippet", "")
-                # Full subheading: strip before dash, keep rest intact
+                # Full subheading: strip before dash, keep entire rest
                 full_sub = clean_subheading(raw_snippet)
                 sort_val, date_display = parse_date(full_sub)
                 all_events.append({
