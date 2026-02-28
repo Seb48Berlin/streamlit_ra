@@ -119,19 +119,33 @@ def save_cache(data):
 
 # ── API fetchers ──────────────────────────────────────────────────────────────
 
-# Free entry keywords to check in snippet/title from search result
+# Free entry keywords — must appear in the snippet (not just the RA-appended title)
 FREE_ENTRY_PATTERNS = re.compile(
     r'free\s*entry|free\s*admission|no\s*cover|eintritt\s*frei|free\s*entrance|gratuit',
     re.IGNORECASE
 )
 
+# Paid ticket signals — if these appear in the snippet, it's NOT free
+PAID_PATTERNS = re.compile(
+    r'\b(buy\s*tickets?|get\s*tickets?|\d+[,.]?\d*\s*€|€\s*\d+|ticket\s*price|from\s*€|sold\s*out)\b',
+    re.IGNORECASE
+)
+
 
 def snippet_confirms_free_entry(title_raw, snippet_raw):
-    """Check that the raw title OR raw snippet (before cleaning) explicitly mentions free entry.
-    This ensures we only keep events where Google indexed 'free entry' on that specific event page,
-    not just somewhere else on ra.co."""
-    combined = title_raw + " " + snippet_raw
-    return bool(FREE_ENTRY_PATTERNS.search(combined))
+    """Confirm free entry using only the snippet text (not the title which RA always
+    appends '⟋ RA Tickets' to, making every event look ticket-based).
+    Also reject if snippet contains paid ticket signals."""
+    # Strip the standard RA title suffix before checking title
+    title_clean = re.sub(r'\s*[⟋|].*$', '', title_raw).strip()
+
+    # Free entry must appear in snippet OR cleaned title
+    has_free = bool(FREE_ENTRY_PATTERNS.search(snippet_raw)) or                bool(FREE_ENTRY_PATTERNS.search(title_clean))
+
+    # Reject if snippet explicitly mentions paid tickets or prices
+    has_paid = bool(PAID_PATTERNS.search(snippet_raw))
+
+    return has_free and not has_paid
 
 
 def build_queries(now):
