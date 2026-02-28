@@ -78,10 +78,18 @@ def clean_subheading(text):
 
 
 def parse_date(sub):
-    """Find the first occurrence of 'D MonthAbbr' where MonthAbbr is a real month."""
+    """Find a date in either 'D Mon' or 'Mon D' format, validating month against MONTH_ORDER."""
+    # Try "D Mon" format: e.g. "8 Mar", "14 Mar."
     for m in re.finditer(r'(\d{1,2})\s+([A-Za-z]{3,4})', sub):
         day = int(m.group(1))
-        mon_str = m.group(2).lower()[:3]  # take first 3 chars to handle "Mar." etc.
+        mon_str = m.group(2).lower()[:3]
+        mon_num = MONTH_ORDER.get(mon_str)
+        if mon_num and 1 <= day <= 31:
+            return mon_num * 100 + day, "{} {}".format(day, mon_str.capitalize())
+    # Try "Mon D" format: e.g. "Mar 8", "March 14"
+    for m in re.finditer(r'([A-Za-z]{3,9})\s+(\d{1,2})', sub):
+        mon_str = m.group(1).lower()[:3]
+        day = int(m.group(2))
         mon_num = MONTH_ORDER.get(mon_str)
         if mon_num and 1 <= day <= 31:
             return mon_num * 100 + day, "{} {}".format(day, mon_str.capitalize())
