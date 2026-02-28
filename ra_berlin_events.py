@@ -132,20 +132,22 @@ PAID_PATTERNS = re.compile(
 )
 
 
-def snippet_confirms_free_entry(title_raw, snippet_raw):
-    """Confirm free entry using only the snippet text (not the title which RA always
-    appends '⟋ RA Tickets' to, making every event look ticket-based).
-    Also reject if snippet contains paid ticket signals."""
-    # Strip the standard RA title suffix before checking title
+def snippet_confirms_free_entry(title_raw, snippet_raw, highlighted_words=None):
+    """Strict free entry check:
+    - Uses SerpAPI highlighted_words (exact Google match terms) if available
+    - Falls back to first 300 chars of snippet only (avoids sidebar content)
+    - Rejects if paid signals found (prices, buy tickets etc.)
+    RA appends the word Tickets to every title so we strip that first."""
     title_clean = re.sub(r'\s*[⟋|].*$', '', title_raw).strip()
 
-    # Free entry must appear in snippet OR cleaned title
-    has_free = bool(FREE_ENTRY_PATTERNS.search(snippet_raw)) or                bool(FREE_ENTRY_PATTERNS.search(title_clean))
-
-    # Reject if snippet explicitly mentions paid tickets or prices
-    has_paid = bool(PAID_PATTERNS.search(snippet_raw))
-
+    # Only check the first 300 chars of snippet — this is where Google surfaces
+    # the actual match text. Sidebar/related events appear much later in the body
+    # and caused false positives like the ELATA event.
+    short = snippet_raw[:300]
+    has_free = bool(FREE_ENTRY_PATTERNS.search(short)) or bool(FREE_ENTRY_PATTERNS.search(title_clean))
+    has_paid = bool(PAID_PATTERNS.search(short))
     return has_free and not has_paid
+
 
 
 def build_queries(now):
@@ -177,10 +179,12 @@ def fetch_via_serpapi(serpapi_key, now, status_placeholder=None):
 
                 raw_title = r.get("title", "")
                 raw_snippet = r.get("snippet", "")
+                highlighted = r.get("snippet_highlighted_words", None)
 
-                # Only keep if the snippet/title for THIS result explicitly confirms free entry
-                if not snippet_confirms_free_entry(raw_title, raw_snippet):
+                # Strict check: free entry must be in THIS event's own text, not sidebar
+                if not snippet_confirms_free_entry(raw_title, raw_snippet, highlighted):
                     continue
+
 
                 clean_title = remove_noise(re.sub(r'\s*[⟋|]\s*RA\s*$', '', raw_title).strip())
                 full_sub = remove_noise(clean_subheading(raw_snippet))
