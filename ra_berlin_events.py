@@ -119,23 +119,19 @@ def save_cache(data):
 
 # ── API fetchers ──────────────────────────────────────────────────────────────
 
-# Keywords that confirm free entry on the actual RA event page
+# Free entry keywords to check in snippet/title from search result
 FREE_ENTRY_PATTERNS = re.compile(
     r'free\s*entry|free\s*admission|no\s*cover|eintritt\s*frei|free\s*entrance|gratuit',
     re.IGNORECASE
 )
 
 
-def verify_free_entry(url):
-    """Fetch the actual RA event page and confirm free entry is mentioned."""
-    try:
-        headers = {"User-Agent": "Mozilla/5.0 (compatible; bot/1.0)"}
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            return True  # keep if page unreachable
-        return bool(FREE_ENTRY_PATTERNS.search(resp.text))
-    except Exception:
-        return True  # keep on error
+def snippet_confirms_free_entry(title_raw, snippet_raw):
+    """Check that the raw title OR raw snippet (before cleaning) explicitly mentions free entry.
+    This ensures we only keep events where Google indexed 'free entry' on that specific event page,
+    not just somewhere else on ra.co."""
+    combined = title_raw + " " + snippet_raw
+    return bool(FREE_ENTRY_PATTERNS.search(combined))
 
 
 def build_queries(now):
@@ -150,11 +146,10 @@ def build_queries(now):
 
 def fetch_via_serpapi(serpapi_key, now, status_placeholder=None):
     queries = build_queries(now)
-    candidates = []
+    verified = []
     seen_urls = set()
     errors = []
 
-    # Step 1: collect all candidates from Google search
     for q in queries:
         params = {"engine": "google", "q": q, "api_key": serpapi_key, "num": 20}
         try:
@@ -165,12 +160,18 @@ def fetch_via_serpapi(serpapi_key, now, status_placeholder=None):
                 if "ra.co/events" not in href or href in seen_urls:
                     continue
                 seen_urls.add(href)
-                raw_title = re.sub(r'\s*[⟋|]\s*RA\s*$', '', r.get("title", "")).strip()
-                clean_title = remove_noise(raw_title)
+
+                raw_title = r.get("title", "")
                 raw_snippet = r.get("snippet", "")
+
+                # Only keep if the snippet/title for THIS result explicitly confirms free entry
+                if not snippet_confirms_free_entry(raw_title, raw_snippet):
+                    continue
+
+                clean_title = remove_noise(re.sub(r'\s*[⟋|]\s*RA\s*$', '', raw_title).strip())
                 full_sub = remove_noise(clean_subheading(raw_snippet))
                 sort_val, date_display = parse_date(full_sub)
-                candidates.append({
+                verified.append({
                     "title": clean_title,
                     "url": href,
                     "date_display": date_display,
@@ -179,15 +180,6 @@ def fetch_via_serpapi(serpapi_key, now, status_placeholder=None):
                 })
         except Exception as e:
             errors.append(str(e))
-
-    # Step 2: verify each RA page actually says "free entry"
-    verified = []
-    total = len(candidates)
-    for i, ev in enumerate(candidates):
-        if status_placeholder:
-            status_placeholder.info("Verifying {}/{}: {}…".format(i + 1, total, ev["title"][:50]))
-        if verify_free_entry(ev["url"]):
-            verified.append(ev)
 
     verified.sort(key=lambda x: x["date_sort"])
     return verified, (", ".join(errors) if errors else None)
@@ -351,13 +343,11 @@ if should_fetch:
         if no_cache_yet:
             st.info("👈 Log in as admin and enter your API key to load events for the first time.")
     else:
-        status = st.empty()
         with st.spinner("Fetching events…"):
             if "Anthropic" in backend:
                 raw, error = fetch_via_anthropic(api_key, now)
             else:
-                raw, error = fetch_via_serpapi(serpapi_key, now, status_placeholder=status)
-        status.empty()
+                raw, error = fetch_via_serpapi(serpapi_key, now)
 
         if error:
             st.error("Fetch error: {}".format(error))
