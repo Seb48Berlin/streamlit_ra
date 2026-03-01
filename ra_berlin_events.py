@@ -125,11 +125,13 @@ FREE_ENTRY_PATTERNS = re.compile(
     re.IGNORECASE
 )
 
-# Paid ticket signals — if these appear in the snippet, it's NOT free
+# Paid ticket signals — if these appear in the snippet, it's NOT fully free
 PAID_PATTERNS = re.compile(
     r'\b(buy\s*tickets?|get\s*tickets?|\d+[,.]?\d*\s*€|€\s*\d+|ticket\s*price|from\s*€|sold\s*out)\b',
     re.IGNORECASE
 )
+
+
 
 
 def snippet_confirms_free_entry(title_raw, snippet_raw, highlighted_words=None):
@@ -199,8 +201,26 @@ def fetch_via_serpapi(serpapi_key, now, status_placeholder=None):
         except Exception as e:
             errors.append(str(e))
 
-    verified.sort(key=lambda x: x["date_sort"])
-    return verified, (", ".join(errors) if errors else None)
+    # Filter out past events and events outside current+next month
+    now_sort = now.month * 100 + now.day  # e.g. 301 for March 1
+    m1, m2, y1, y2 = get_search_months(now)
+    valid_months = {MONTH_ORDER[m1.lower()[:3]], MONTH_ORDER[m2.lower()[:3]]}
+
+    filtered = []
+    for ev in verified:
+        ds = ev["date_sort"]
+        if ds == 9999:
+            continue  # no date parsed, skip
+        ev_month = ds // 100
+        ev_day = ds % 100
+        if ev_month not in valid_months:
+            continue  # outside search window
+        if ds < now_sort:
+            continue  # already past
+        filtered.append(ev)
+
+    filtered.sort(key=lambda x: x["date_sort"])
+    return filtered, (", ".join(errors) if errors else None)
 
 
 def fetch_via_anthropic(api_key, now):
