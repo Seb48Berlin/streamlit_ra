@@ -22,7 +22,7 @@ BLOCKED_EVENT_IDS = {
 
 # Blocklist: event name keywords — events whose title contains any of these are blocked
 BLOCKED_NAME_KEYWORDS = [
-    "Birgits Weekender",  # partially free only (open air until 8PM), main event is paid
+    "Birgits Weekender",  # partially free only, main event is paid
 ]
 
 MONTH_ORDER = {
@@ -73,8 +73,8 @@ def remove_noise(text):
     text = re.sub(r'\*?\s*free\s*(entry|ticket)\s*\*?', ' ', text, flags=re.IGNORECASE)
     # Remove leftover lone asterisks
     text = re.sub(r'\*', '', text)
-    # Remove "Interested: <digits>" (e.g. "Interested: 142")
-    text = re.sub(r'Interested[:.]\s*\d+', '', text, flags=re.IGNORECASE)
+    # Remove "Interested: 81" or "Interested. 81"
+    text = re.sub(r'Interested[:.]\ *\d+', '', text, flags=re.IGNORECASE)
     # Collapse multiple separators: ··, --, · ·, etc.
     text = re.sub(r'([·\-–—|])\s*\1+', r'\1', text)
     text = re.sub(r'\s*[·\-–—|]\s*$', '', text)   # trailing separator
@@ -148,7 +148,7 @@ FREE_ENTRY_PATTERNS = re.compile(
 
 # Paid ticket signals — if these appear in the snippet, it's NOT fully free
 PAID_PATTERNS = re.compile(
-    r'\b(buy\s*tickets?|get\s*tickets?|tickets?\s*available|presale|\d+[,.]?\d*\s*€|€\s*\d+|ticket\s*price|from\s*€|sold\s*out|Cost\s*\d+)\b',
+    r'\b(buy\s*tickets?|get\s*tickets?|\d+[,.]?\d*\s*€|€\s*\d+|ticket\s*price|from\s*€|sold\s*out)\b',
     re.IGNORECASE
 )
 
@@ -158,11 +158,11 @@ PAID_PATTERNS = re.compile(
 def snippet_confirms_free_entry(title_raw, snippet_raw, highlighted_words=None):
     """Strict free entry check.
     'Free entry' must appear either:
-      (a) in the title (definitive — RA puts it there explicitly), OR
+      (a) in the title — RA puts it there explicitly, definitive proof, OR
       (b) in the snippet close to a date/Berlin/venue marker (within 150 chars).
     Also rejects if paid signals appear in the same window.
     """
-    # (a) Free entry in the title is definitive proof — no proximity check needed
+    # (a) Free entry in the title is definitive
     if FREE_ENTRY_PATTERNS.search(title_raw) and not PAID_PATTERNS.search(title_raw):
         return True
 
@@ -185,7 +185,6 @@ def snippet_confirms_free_entry(title_raw, snippet_raw, highlighted_words=None):
 def build_queries(now):
     m1, m2, m3, y1, y2, y3 = get_search_months(now)
     months = [(m1, y1), (m2, y2), (m3, y3)]
-    # Search multiple free entry phrasings to catch German, alternative English etc.
     free_phrases = ["Free Entry", "Free Ticket", "Free Admission", "Eintritt frei", "freier Eintritt"]
     queries = []
     seen = set()
@@ -213,16 +212,14 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
                 href = r.get("link", "")
                 if "ra.co/events" not in href or href in seen_urls:
                     continue
-                # Extract numeric event ID — URL may be /events/2327169 or /events/2327169/slug
-                # Strip query string/fragment first so "2327169?utm_source=..." doesn't break isdigit()
+                # Extract numeric event ID — strip query string first, handle /events/ID or /events/ID/slug
                 href_clean = re.split(r'[?#]', href)[0]
                 parts = href_clean.rstrip("/").split("/")
-                # Find the numeric segment after "events"
                 event_id = next((p for p in reversed(parts) if p.isdigit()), parts[-1])
                 all_blocked = BLOCKED_EVENT_IDS | set(cache_blocklist or [])
                 if event_id in all_blocked:
                     continue
-                # Strip query string/fragment and normalize locale-prefixed URLs (e.g. de.ra.co → ra.co)
+                # Strip query params and normalize locale URLs (de.ra.co → ra.co)
                 href = re.split(r'[?#]', href)[0]
                 href = re.sub(r'https?://[a-z]{2}\.ra\.co', 'https://ra.co', href)
                 seen_urls.add(href)
@@ -235,8 +232,7 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
                 if any(kw.lower() in raw_title.lower() for kw in all_name_blocked if kw.strip()):
                     continue
 
-                # Must be in Berlin — require "Berlin" in the TITLE specifically,
-                # not just anywhere in the snippet (which may mention Berlin generically)
+                # Must be in Berlin — require "Berlin" in the title specifically
                 title_for_city = re.sub(r'\s*[⟋|].*$', '', raw_title)
                 if not re.search(r'\bBerlin\b', title_for_city, re.IGNORECASE):
                     continue
@@ -294,13 +290,10 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
         if ev_year is not None and ev_year < current_year:
             continue
         ev_month = ds // 100
-        ev_day = ds % 100
         if ev_month not in valid_months:
             continue  # outside search window
-        # Reject past dates using a full (year, month, day) comparison
-        assumed_year = ev_year if ev_year is not None else current_year
-        if (assumed_year, ev_month, ev_day) < (current_year, now.month, now.day):
-            continue  # already past
+        if ds < now_sort:
+            continue  # already past this month
         filtered.append(ev)
 
     filtered.sort(key=lambda x: x["date_sort"])
