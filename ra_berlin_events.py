@@ -425,34 +425,14 @@ with st.sidebar:
 
             st.caption("**Custom IDs** — just the number from the URL e.g. `ra.co/events/2327169`:")
             custom_ids = list(cache.get("blocklist", []))
-
-            # Show existing with remove option
-            if custom_ids:
-                del_id = st.selectbox("Select to remove", ["— select —"] + custom_ids, key="del_id_sel")
-                if st.button("🗑 Remove selected ID", key="del_id_btn"):
-                    if del_id != "— select —":
-                        custom_ids.remove(del_id)
-                        cache["blocklist"] = custom_ids
-                        save_cache(cache)
-                        st.success("Removed {}".format(del_id))
-                        st.rerun()
-            else:
-                st.caption("_(none yet)_")
-
-            # Add new
-            new_id = st.text_input("Add event ID", placeholder="e.g. 2327169", key="add_id_input")
-            if st.button("➕ Add ID", key="add_id_btn"):
-                new_id = new_id.strip()
-                if new_id.isdigit() and new_id not in custom_ids:
-                    custom_ids.append(new_id)
-                    cache["blocklist"] = custom_ids
-                    save_cache(cache)
-                    st.success("Added {}".format(new_id))
-                    st.rerun()
-                elif not new_id.isdigit():
-                    st.error("IDs must be numbers only")
-                else:
-                    st.warning("Already in list")
+            id_text = st.text_area("Custom blocked IDs", value="\n".join(custom_ids),
+                                   height=80, key="id_blocklist_input", label_visibility="collapsed",
+                                   help="One ID per line. Edit and delete lines freely, then save.")
+            if st.button("💾 Save ID Blocklist"):
+                new_bl = [x.strip() for x in id_text.splitlines() if x.strip().isdigit()]
+                cache["blocklist"] = new_bl
+                save_cache(cache)
+                st.success("Saved {} custom IDs".format(len(new_bl)))
 
         # --- Name blocklist ---
         with st.expander("🔤 Block by Event Name ({} hardcoded + {} custom)".format(
@@ -464,34 +444,14 @@ with st.sidebar:
 
             st.caption("**Custom keywords** — any event title containing this text is blocked:")
             custom_names = list(cache.get("name_blocklist", []))
-
-            # Show existing with remove option
-            if custom_names:
-                del_name = st.selectbox("Select to remove", ["— select —"] + custom_names, key="del_name_sel")
-                if st.button("🗑 Remove selected keyword", key="del_name_btn"):
-                    if del_name != "— select —":
-                        custom_names.remove(del_name)
-                        cache["name_blocklist"] = custom_names
-                        save_cache(cache)
-                        st.success("Removed: {}".format(del_name))
-                        st.rerun()
-            else:
-                st.caption("_(none yet)_")
-
-            # Add new
-            new_kw = st.text_input("Add keyword", placeholder="e.g. Smash & HART", key="add_name_input")
-            if st.button("➕ Add keyword", key="add_name_btn"):
-                new_kw = new_kw.strip()
-                if new_kw and new_kw not in custom_names:
-                    custom_names.append(new_kw)
-                    cache["name_blocklist"] = custom_names
-                    save_cache(cache)
-                    st.success("Added: {}".format(new_kw))
-                    st.rerun()
-                elif not new_kw:
-                    st.error("Keyword cannot be empty")
-                else:
-                    st.warning("Already in list")
+            name_text = st.text_area("Custom blocked names", value="\n".join(custom_names),
+                                     height=100, key="name_blocklist_input", label_visibility="collapsed",
+                                     help="One keyword per line. Edit and delete lines freely, then save.")
+            if st.button("💾 Save Name Blocklist"):
+                new_nbl = [x.strip() for x in name_text.splitlines() if x.strip()]
+                cache["name_blocklist"] = new_nbl
+                save_cache(cache)
+                st.success("Saved {} custom name keywords".format(len(new_nbl)))
 
         fetch_btn = st.button("🔍 Fetch Now", use_container_width=True,
                               disabled=(not in_slot and not no_cache_yet))
