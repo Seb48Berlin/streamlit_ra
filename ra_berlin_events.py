@@ -17,10 +17,12 @@ ADMIN_PASSWORD = "admin1234"  # change this
 BLOCKED_EVENT_IDS = {
     "2327169",  # ELATA x GROOVE THEORY at ÆDEN
     "2094386",  # Birgits Weekender May 2025 (paid)
+    "2328803",  # past Jan event, false positive
 }
 
 # Blocklist: event name keywords — events whose title contains any of these are blocked
 BLOCKED_NAME_KEYWORDS = [
+    "Birgits Weekender",  # partially free only (open air until 8PM), main event is paid
 ]
 
 MONTH_ORDER = {
@@ -146,7 +148,7 @@ FREE_ENTRY_PATTERNS = re.compile(
 
 # Paid ticket signals — if these appear in the snippet, it's NOT fully free
 PAID_PATTERNS = re.compile(
-    r'\b(buy\s*tickets?|get\s*tickets?|\d+[,.]?\d*\s*€|€\s*\d+|ticket\s*price|from\s*€|sold\s*out)\b',
+    r'\b(buy\s*tickets?|get\s*tickets?|tickets?\s*available|presale|\d+[,.]?\d*\s*€|€\s*\d+|ticket\s*price|from\s*€|sold\s*out|Cost\s*\d+)\b',
     re.IGNORECASE
 )
 
@@ -155,16 +157,20 @@ PAID_PATTERNS = re.compile(
 
 def snippet_confirms_free_entry(title_raw, snippet_raw, highlighted_words=None):
     """Strict free entry check.
-    Requires 'free entry' to appear in the snippet CLOSE TO a date or Berlin/venue
-    marker (within 150 chars), proving it refers to THIS event not a sidebar event.
+    'Free entry' must appear either:
+      (a) in the title (definitive — RA puts it there explicitly), OR
+      (b) in the snippet close to a date/Berlin/venue marker (within 150 chars).
     Also rejects if paid signals appear in the same window.
     """
-    NEAR_WINDOW = 150
+    # (a) Free entry in the title is definitive proof — no proximity check needed
+    if FREE_ENTRY_PATTERNS.search(title_raw) and not PAID_PATTERNS.search(title_raw):
+        return True
 
+    # (b) Free entry in the snippet, near a date or Berlin/venue marker
+    NEAR_WINDOW = 150
     for fe_match in FREE_ENTRY_PATTERNS.finditer(snippet_raw):
         start = fe_match.start()
         window = snippet_raw[max(0, start - NEAR_WINDOW): start + NEAR_WINDOW]
-        # Must be near a date signal or Berlin/venue to be about this specific event
         near_event = re.search(
             r'\d{1,2}[\s.]+[A-Za-z]{3}|[A-Za-z]{3}[\s.,]+\d{1,2}|Berlin|Venue|\d{4}',
             window, re.IGNORECASE
@@ -208,12 +214,17 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
                 if "ra.co/events" not in href or href in seen_urls:
                     continue
                 # Extract numeric event ID — URL may be /events/2327169 or /events/2327169/slug
-                parts = href.rstrip("/").split("/")
+                # Strip query string/fragment first so "2327169?utm_source=..." doesn't break isdigit()
+                href_clean = re.split(r'[?#]', href)[0]
+                parts = href_clean.rstrip("/").split("/")
                 # Find the numeric segment after "events"
                 event_id = next((p for p in reversed(parts) if p.isdigit()), parts[-1])
                 all_blocked = BLOCKED_EVENT_IDS | set(cache_blocklist or [])
                 if event_id in all_blocked:
                     continue
+                # Strip query string/fragment and normalize locale-prefixed URLs (e.g. de.ra.co → ra.co)
+                href = re.split(r'[?#]', href)[0]
+                href = re.sub(r'https?://[a-z]{2}\.ra\.co', 'https://ra.co', href)
                 seen_urls.add(href)
 
                 raw_title = r.get("title", "")
@@ -224,10 +235,10 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
                 if any(kw.lower() in raw_title.lower() for kw in all_name_blocked if kw.strip()):
                     continue
 
-                # Must be in Berlin — check URL, title AND snippet for Berlin, Germany context
-                # Reject if another city appears in title (Vienna, Minneapolis, etc.)
+                # Must be in Berlin — require "Berlin" in the TITLE specifically,
+                # not just anywhere in the snippet (which may mention Berlin generically)
                 title_for_city = re.sub(r'\s*[⟋|].*$', '', raw_title)
-                if not re.search(r'\bBerlin\b', href + " " + title_for_city + " " + raw_snippet[:300], re.IGNORECASE):
+                if not re.search(r'\bBerlin\b', title_for_city, re.IGNORECASE):
                     continue
                 # Reject if a non-Berlin city appears in the VENUE part of the title
                 # (after "bei" or "at" or "@") — ignore artist/event name part
@@ -283,10 +294,13 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
         if ev_year is not None and ev_year < current_year:
             continue
         ev_month = ds // 100
+        ev_day = ds % 100
         if ev_month not in valid_months:
             continue  # outside search window
-        if ds < now_sort:
-            continue  # already past this month
+        # Reject past dates using a full (year, month, day) comparison
+        assumed_year = ev_year if ev_year is not None else current_year
+        if (assumed_year, ev_month, ev_day) < (current_year, now.month, now.day):
+            continue  # already past
         filtered.append(ev)
 
     filtered.sort(key=lambda x: x["date_sort"])
