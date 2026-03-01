@@ -15,14 +15,14 @@ ADMIN_PASSWORD = "admin1234"  # change this
 
 # Blocklist: RA event IDs confirmed as false positives (no free entry)
 BLOCKED_EVENT_IDS = {
-#    "2327169",  # ELATA x GROOVE THEORY at ÆDEN
-#    "2094386",  # Birgits Weekender May 2025 (paid)
+    "2327169",  # ELATA x GROOVE THEORY at ÆDEN
+    "2094386",  # Birgits Weekender May 2025 (paid)
 }
 
 # Blocklist: event name keywords — events whose title contains any of these are blocked
 BLOCKED_NAME_KEYWORDS = [
-#    "Smash & HART",
-#    "THE UNKNOWN",
+    "Smash & HART",
+    "THE UNKNOWN",
 ]
 
 MONTH_ORDER = {
