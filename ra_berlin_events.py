@@ -61,12 +61,12 @@ def next_slot(now):
 def remove_noise(text):
     """Remove 'free entry' in all variants: brackets, asterisks, dots, separators."""
     # Remove bracketed/asterisked variants: (free entry), [*free entry*], (*free entry*) etc.
-    text = re.sub(r'[\(\[]\s*\*?\s*free\s*entry\s*\*?\s*[\)\]]', ' ', text, flags=re.IGNORECASE)
+    text = re.sub(r'[\(\[]\s*\*?\s*free\s*(entry|ticket)\s*\*?\s*[\)\]]', ' ', text, flags=re.IGNORECASE)
     # Remove with surrounding separators: · free entry ·, - free entry -, | free entry |
-    text = re.sub(r'[·\-–—|]\s*\*?\s*free\s*entry\s*\*?\s*(?=[·\-–—|]|$)', ' ', text, flags=re.IGNORECASE)
-    text = re.sub(r'(?:^|(?<=[·\-–—|]))\s*\*?\s*free\s*entry\s*\*?\s*[·\-–—|]', ' ', text, flags=re.IGNORECASE)
-    # Remove any remaining free entry with optional asterisks
-    text = re.sub(r'\*?\s*free\s*entry\s*\*?', ' ', text, flags=re.IGNORECASE)
+    text = re.sub(r'[·\-–—|]\s*\*?\s*free\s*(entry|ticket)\s*\*?\s*(?=[·\-–—|]|$)', ' ', text, flags=re.IGNORECASE)
+    text = re.sub(r'(?:^|(?<=[·\-–—|]))\s*\*?\s*free\s*(entry|ticket)\s*\*?\s*[·\-–—|]', ' ', text, flags=re.IGNORECASE)
+    # Remove any remaining free entry/ticket with optional asterisks
+    text = re.sub(r'\*?\s*free\s*(entry|ticket)\s*\*?', ' ', text, flags=re.IGNORECASE)
     # Remove leftover lone asterisks
     text = re.sub(r'\*', '', text)
     # Collapse multiple separators: ··, --, · ·, etc.
@@ -174,11 +174,13 @@ def snippet_confirms_free_entry(title_raw, snippet_raw, highlighted_words=None):
 
 def build_queries(now):
     m1, m2, y1, y2 = get_search_months(now)
-    queries = [
-        'site:ra.co/events "Berlin" "Free Entry" "{}" "{}"'.format(m1, y1),
-    ]
-    if m2 != m1:
-        queries.append('site:ra.co/events "Berlin" "Free Entry" "{}" "{}"'.format(m2, y2))
+    # Search multiple free entry phrasings to catch German, alternative English etc.
+    free_phrases = ["Free Entry", "Free Ticket", "Free Admission", "Eintritt frei", "freier Eintritt"]
+    queries = []
+    for phrase in free_phrases:
+        queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m1, y1))
+        if m2 != m1:
+            queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m2, y2))
     return queries
 
 
