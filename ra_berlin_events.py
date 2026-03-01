@@ -72,7 +72,7 @@ def remove_noise(text):
     # Remove leftover lone asterisks
     text = re.sub(r'\*', '', text)
     # Remove "Interested: <digits>" (e.g. "Interested: 142")
-    text = re.sub(r'Interested:\s*\d+', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'Interested[:.]\s*\d+', '', text, flags=re.IGNORECASE)
     # Collapse multiple separators: ··, --, · ·, etc.
     text = re.sub(r'([·\-–—|])\s*\1+', r'\1', text)
     text = re.sub(r'\s*[·\-–—|]\s*$', '', text)   # trailing separator
