@@ -14,11 +14,16 @@ CACHE_FILE = "ra_events_cache.json"
 ADMIN_PASSWORD = "admin1234"  # change this
 
 # Blocklist: RA event IDs confirmed as false positives (no free entry)
-# Add IDs here when wrong events appear — format: just the number from the URL
 BLOCKED_EVENT_IDS = {
     "2327169",  # ELATA x GROOVE THEORY at ÆDEN
     "2094386",  # Birgits Weekender May 2025 (paid)
 }
+
+# Blocklist: event name keywords — events whose title contains any of these are blocked
+BLOCKED_NAME_KEYWORDS = [
+    "Smash & HART",
+    "THE UNKNOWN",
+]
 
 MONTH_ORDER = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
@@ -116,7 +121,7 @@ def load_cache():
         except Exception:
             pass
     return {"slot": None, "events": [], "fetched_at": None, "fetch_count": 0, "fetch_log": [],
-            "api_key": "", "serpapi_key": "", "backend": "SerpAPI (Google)", "blocklist": []}
+            "api_key": "", "serpapi_key": "", "backend": "SerpAPI (Google)", "blocklist": [], "name_blocklist": []}
 
 
 def save_cache(data):
@@ -177,7 +182,7 @@ def build_queries(now):
     return queries
 
 
-def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, status_placeholder=None):
+def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=None, status_placeholder=None):
     queries = build_queries(now)
     verified = []
     seen_urls = set()
@@ -200,6 +205,10 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, status_placeholder
                 seen_urls.add(href)
 
                 raw_title = r.get("title", "")
+                # Check name blocklist (hardcoded + admin-added)
+                all_name_blocked = BLOCKED_NAME_KEYWORDS + (name_blocklist or [])
+                if any(kw.lower() in raw_title.lower() for kw in all_name_blocked if kw.strip()):
+                    continue
                 raw_snippet = r.get("snippet", "")
                 highlighted = r.get("snippet_highlighted_words", None)
 
@@ -381,19 +390,49 @@ with st.sidebar:
                     st.caption(entry)
 
         st.markdown("---")
-        st.markdown("**🚫 Event Blocklist**")
-        st.caption("Add RA event IDs to block false positives (one per line). Find the ID in the URL, e.g. ra.co/events/**2327169**")
-        blocklist_text = st.text_area(
-            "Blocked event IDs",
-            value="\n".join(cache.get("blocklist", [])),
-            height=80,
-            label_visibility="collapsed"
-        )
-        if st.button("💾 Save Blocklist"):
-            new_bl = [x.strip() for x in blocklist_text.splitlines() if x.strip().isdigit()]
-            cache["blocklist"] = new_bl
-            save_cache(cache)
-            st.success("Saved {} blocked IDs".format(len(new_bl)))
+        st.markdown("**🚫 Blocklists**")
+
+        # --- ID blocklist ---
+        with st.expander("🔢 Block by RA Event ID ({} hardcoded + {} custom)".format(
+            len(BLOCKED_EVENT_IDS), len(cache.get("blocklist", []))
+        )):
+            st.caption("Hardcoded IDs (in code):")
+            for eid in sorted(BLOCKED_EVENT_IDS):
+                st.code(eid, language=None)
+            st.caption("Custom IDs (one per line — just the number from the URL e.g. ra.co/events/**2327169**):")
+            id_text = st.text_area(
+                "Custom blocked IDs",
+                value="\n".join(cache.get("blocklist", [])),
+                height=80,
+                key="id_blocklist_input",
+                label_visibility="collapsed"
+            )
+            if st.button("💾 Save ID Blocklist"):
+                new_bl = [x.strip() for x in id_text.splitlines() if x.strip().isdigit()]
+                cache["blocklist"] = new_bl
+                save_cache(cache)
+                st.success("Saved {} custom IDs".format(len(new_bl)))
+
+        # --- Name blocklist ---
+        with st.expander("🔤 Block by Event Name ({} hardcoded + {} custom)".format(
+            len(BLOCKED_NAME_KEYWORDS), len(cache.get("name_blocklist", []))
+        )):
+            st.caption("Hardcoded name keywords (in code):")
+            for kw in BLOCKED_NAME_KEYWORDS:
+                st.code(kw, language=None)
+            st.caption("Custom keywords (one per line — any event title containing this text will be blocked):")
+            name_text = st.text_area(
+                "Custom blocked names",
+                value="\n".join(cache.get("name_blocklist", [])),
+                height=100,
+                key="name_blocklist_input",
+                label_visibility="collapsed"
+            )
+            if st.button("💾 Save Name Blocklist"):
+                new_nbl = [x.strip() for x in name_text.splitlines() if x.strip()]
+                cache["name_blocklist"] = new_nbl
+                save_cache(cache)
+                st.success("Saved {} custom name keywords".format(len(new_nbl)))
 
         fetch_btn = st.button("🔍 Fetch Now", use_container_width=True,
                               disabled=(not in_slot and not no_cache_yet))
@@ -428,7 +467,7 @@ if should_fetch:
             if "Anthropic" in backend:
                 raw, error = fetch_via_anthropic(api_key, now)
             else:
-                raw, error = fetch_via_serpapi(serpapi_key, now, cache_blocklist=cache.get("blocklist", []))
+                raw, error = fetch_via_serpapi(serpapi_key, now, cache_blocklist=cache.get("blocklist", []), name_blocklist=cache.get("name_blocklist", []))
 
         if error:
             st.error("Fetch error: {}".format(error))
