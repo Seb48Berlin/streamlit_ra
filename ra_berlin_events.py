@@ -268,8 +268,8 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
     # Filter: keep only future events in current+next month and correct year
     now_sort = now.month * 100 + now.day
     current_year = now.year
-    m1, m2, y1, y2 = get_search_months(now)
-    valid_months = {MONTH_ORDER[m1.lower()[:3]], MONTH_ORDER[m2.lower()[:3]]}
+    m1, m2, m3, y1, y2, y3 = get_search_months(now)
+    valid_months = {MONTH_ORDER[m1.lower()[:3]], MONTH_ORDER[m2.lower()[:3]], MONTH_ORDER[m3.lower()[:3]]}
 
     filtered = []
     for ev in verified:
@@ -292,10 +292,12 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
 
 
 def fetch_via_anthropic(api_key, now):
-    m1, m2, y1, y2 = get_search_months(now)
+    m1, m2, m3, y1, y2, y3 = get_search_months(now)
     months_str = '"{}" "{}"'.format(m1, y1)
     if m2 != m1:
         months_str += ' OR "{}" "{}"'.format(m2, y2)
+    if m3 != m2:
+        months_str += ' OR "{}" "{}"'.format(m3, y3)
     system_prompt = """You are a data extraction assistant. Search the web and return ONLY a JSON array of Berlin techno free entry events from ra.co.
 Each item must have:
   - title: event name with "free entry" (any case/brackets/asterisks) fully removed
