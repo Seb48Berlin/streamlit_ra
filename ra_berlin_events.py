@@ -36,10 +36,14 @@ def get_now():
 
 
 def get_search_months(now):
-    """Return (current_month_abbr, next_month_abbr, year_str) for search query."""
+    """Return (m1, m2, m3, y1, y2, y3) for the current + next 2 months."""
     this = now.replace(day=1)
     nxt = (this + timedelta(days=32)).replace(day=1)
-    return this.strftime("%b"), nxt.strftime("%b"), now.strftime("%Y"), nxt.strftime("%Y")
+    nxt2 = (nxt + timedelta(days=32)).replace(day=1)
+    return (
+        this.strftime("%b"), nxt.strftime("%b"), nxt2.strftime("%b"),
+        this.strftime("%Y"), nxt.strftime("%Y"), nxt2.strftime("%Y"),
+    )
 
 
 def slot_label(dt):
@@ -171,14 +175,18 @@ def snippet_confirms_free_entry(title_raw, snippet_raw, highlighted_words=None):
 
 
 def build_queries(now):
-    m1, m2, y1, y2 = get_search_months(now)
+    m1, m2, m3, y1, y2, y3 = get_search_months(now)
+    months = [(m1, y1), (m2, y2), (m3, y3)]
     # Search multiple free entry phrasings to catch German, alternative English etc.
     free_phrases = ["Free Entry", "Free Ticket", "Free Admission", "Eintritt frei", "freier Eintritt"]
     queries = []
+    seen = set()
     for phrase in free_phrases:
-        queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m1, y1))
-        if m2 != m1:
-            queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m2, y2))
+        for m, y in months:
+            key = (phrase, m, y)
+            if key not in seen:
+                seen.add(key)
+                queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m, y))
     return queries
 
 
@@ -395,8 +403,8 @@ with st.sidebar:
         else:
             st.warning("⏳ Next: **{}** ({} h {} min)".format(nxt.strftime("%H:%M"), h_left, m_left))
 
-        m1, m2, y1, y2 = get_search_months(now)
-        st.markdown("**🔍 Searching:** {} {} + {} {}".format(m1, y1, m2, y2))
+        m1, m2, m3, y1, y2, y3 = get_search_months(now)
+        st.markdown("**🔍 Searching:** {} {} · {} {} · {} {}".format(m1, y1, m2, y2, m3, y3))
 
         st.markdown("---")
         budget = 93
