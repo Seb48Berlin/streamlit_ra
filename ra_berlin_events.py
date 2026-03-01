@@ -419,43 +419,77 @@ with st.sidebar:
         with st.expander("🔢 Block by RA Event ID ({} hardcoded + {} custom)".format(
             len(BLOCKED_EVENT_IDS), len(cache.get("blocklist", []))
         )):
-            st.caption("Hardcoded IDs (in code):")
+            st.caption("**Hardcoded IDs** (in code — edit the .py to change):")
             for eid in sorted(BLOCKED_EVENT_IDS):
                 st.code(eid, language=None)
-            st.caption("Custom IDs (one per line — just the number from the URL e.g. ra.co/events/**2327169**):")
-            id_text = st.text_area(
-                "Custom blocked IDs",
-                value="\n".join(cache.get("blocklist", [])),
-                height=80,
-                key="id_blocklist_input",
-                label_visibility="collapsed"
-            )
-            if st.button("💾 Save ID Blocklist"):
-                new_bl = [x.strip() for x in id_text.splitlines() if x.strip().isdigit()]
-                cache["blocklist"] = new_bl
-                save_cache(cache)
-                st.success("Saved {} custom IDs".format(len(new_bl)))
+
+            st.caption("**Custom IDs** — just the number from the URL e.g. `ra.co/events/2327169`:")
+            custom_ids = list(cache.get("blocklist", []))
+            ids_changed = False
+            for i, eid in enumerate(custom_ids):
+                c1, c2 = st.columns([5, 1])
+                c1.code(eid, language=None)
+                if c2.button("✕", key="del_id_{}".format(i), help="Remove"):
+                    custom_ids.pop(i)
+                    cache["blocklist"] = custom_ids
+                    save_cache(cache)
+                    ids_changed = True
+                    break  # rerun will refresh list
+            if ids_changed:
+                st.rerun()
+
+            with st.form("add_id_form", clear_on_submit=True):
+                new_id = st.text_input("Add event ID", placeholder="e.g. 2327169")
+                if st.form_submit_button("➕ Add"):
+                    new_id = new_id.strip()
+                    if new_id.isdigit() and new_id not in custom_ids:
+                        custom_ids.append(new_id)
+                        cache["blocklist"] = custom_ids
+                        save_cache(cache)
+                        st.success("Added {}".format(new_id))
+                        st.rerun()
+                    elif not new_id.isdigit():
+                        st.error("IDs must be numbers only")
+                    else:
+                        st.warning("Already in list")
 
         # --- Name blocklist ---
         with st.expander("🔤 Block by Event Name ({} hardcoded + {} custom)".format(
             len(BLOCKED_NAME_KEYWORDS), len(cache.get("name_blocklist", []))
         )):
-            st.caption("Hardcoded name keywords (in code):")
+            st.caption("**Hardcoded keywords** (in code — edit the .py to change):")
             for kw in BLOCKED_NAME_KEYWORDS:
                 st.code(kw, language=None)
-            st.caption("Custom keywords (one per line — any event title containing this text will be blocked):")
-            name_text = st.text_area(
-                "Custom blocked names",
-                value="\n".join(cache.get("name_blocklist", [])),
-                height=100,
-                key="name_blocklist_input",
-                label_visibility="collapsed"
-            )
-            if st.button("💾 Save Name Blocklist"):
-                new_nbl = [x.strip() for x in name_text.splitlines() if x.strip()]
-                cache["name_blocklist"] = new_nbl
-                save_cache(cache)
-                st.success("Saved {} custom name keywords".format(len(new_nbl)))
+
+            st.caption("**Custom keywords** — any event title containing this text is blocked:")
+            custom_names = list(cache.get("name_blocklist", []))
+            names_changed = False
+            for i, kw in enumerate(custom_names):
+                c1, c2 = st.columns([5, 1])
+                c1.code(kw, language=None)
+                if c2.button("✕", key="del_name_{}".format(i), help="Remove"):
+                    custom_names.pop(i)
+                    cache["name_blocklist"] = custom_names
+                    save_cache(cache)
+                    names_changed = True
+                    break
+            if names_changed:
+                st.rerun()
+
+            with st.form("add_name_form", clear_on_submit=True):
+                new_kw = st.text_input("Add keyword", placeholder="e.g. Smash & HART")
+                if st.form_submit_button("➕ Add"):
+                    new_kw = new_kw.strip()
+                    if new_kw and new_kw not in custom_names:
+                        custom_names.append(new_kw)
+                        cache["name_blocklist"] = custom_names
+                        save_cache(cache)
+                        st.success("Added: {}".format(new_kw))
+                        st.rerun()
+                    elif not new_kw:
+                        st.error("Keyword cannot be empty")
+                    else:
+                        st.warning("Already in list")
 
         fetch_btn = st.button("🔍 Fetch Now", use_container_width=True,
                               disabled=(not in_slot and not no_cache_yet))
