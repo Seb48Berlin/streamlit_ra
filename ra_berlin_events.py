@@ -21,8 +21,6 @@ BLOCKED_EVENT_IDS = {
 
 # Blocklist: event name keywords — events whose title contains any of these are blocked
 BLOCKED_NAME_KEYWORDS = [
-    "Smash & HART",
-    "THE UNKNOWN",
 ]
 
 MONTH_ORDER = {
