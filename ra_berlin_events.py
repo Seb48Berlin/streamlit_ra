@@ -207,8 +207,10 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
                 href = r.get("link", "")
                 if "ra.co/events" not in href or href in seen_urls:
                     continue
-                # Check blocklist by event ID (hardcoded + admin-added)
-                event_id = href.rstrip("/").split("/")[-1]
+                # Extract numeric event ID — URL may be /events/2327169 or /events/2327169/slug
+                parts = href.rstrip("/").split("/")
+                # Find the numeric segment after "events"
+                event_id = next((p for p in reversed(parts) if p.isdigit()), parts[-1])
                 all_blocked = BLOCKED_EVENT_IDS | set(cache_blocklist or [])
                 if event_id in all_blocked:
                     continue
