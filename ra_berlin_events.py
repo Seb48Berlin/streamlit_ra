@@ -207,11 +207,32 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
                 seen_urls.add(href)
 
                 raw_title = r.get("title", "")
+                raw_snippet = r.get("snippet", "")
+
                 # Check name blocklist (hardcoded + admin-added)
                 all_name_blocked = BLOCKED_NAME_KEYWORDS + (name_blocklist or [])
                 if any(kw.lower() in raw_title.lower() for kw in all_name_blocked if kw.strip()):
                     continue
-                raw_snippet = r.get("snippet", "")
+
+                # Must be in Berlin — check URL, title AND snippet for Berlin, Germany context
+                # Reject if another city appears in title (Vienna, Minneapolis, etc.)
+                title_for_city = re.sub(r'\s*[⟋|].*$', '', raw_title)
+                if not re.search(r'\bBerlin\b', href + " " + title_for_city + " " + raw_snippet[:300], re.IGNORECASE):
+                    continue
+                # Reject if a non-Berlin city appears in the VENUE part of the title
+                # (after "bei" or "at" or "@") — ignore artist/event name part
+                non_berlin_cities = re.compile(
+                    r'\b(Vienna|Wien|Minneapolis|Hamburg|Munich|München|Cologne|Köln|Frankfurt|'
+                    r'Amsterdam|London|Paris|Barcelona|Madrid|Rome|Roma|Prague|Praha|'
+                    r'Warsaw|Warszawa|Budapest|Zurich|Zürich|Brussels|Brüssel|'
+                    r'Stockholm|Copenhagen|Oslo|Helsinki|Dublin|Lisbon|Lisboa)\b',
+                    re.IGNORECASE
+                )
+                # Extract venue portion: everything after "bei", "at", "@" separator
+                venue_part = re.split(r'\s+(?:bei|at|@)\s+', title_for_city, maxsplit=1)
+                venue_str = venue_part[-1] if len(venue_part) > 1 else title_for_city
+                if non_berlin_cities.search(venue_str):
+                    continue
                 highlighted = r.get("snippet_highlighted_words", None)
 
                 # Strict check: free entry must be in THIS event's own text, not sidebar
