@@ -13,6 +13,13 @@ ALLOWED_HOURS = {11, 16, 21}
 CACHE_FILE = "ra_events_cache.json"
 ADMIN_PASSWORD = "admin1234"  # change this
 
+# Blocklist: RA event IDs confirmed as false positives (no free entry)
+# Add IDs here when wrong events appear — format: just the number from the URL
+BLOCKED_EVENT_IDS = {
+    "2327169",  # ELATA x GROOVE THEORY at ÆDEN
+    "2094386",  # Birgits Weekender May 2025 (paid)
+}
+
 MONTH_ORDER = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
     "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
@@ -78,22 +85,25 @@ def clean_subheading(text):
 
 
 def parse_date(sub):
-    """Find a date in either 'D Mon' or 'Mon D' format, validating month against MONTH_ORDER."""
-    # Try "D Mon" format: e.g. "8 Mar", "14 Mar."
-    for m in re.finditer(r'(\d{1,2})\s+([A-Za-z]{3,4})', sub):
+    """Find a date in either 'D Mon [Year]' or 'Mon D [Year]' format.
+    Returns (date_sort, date_display, year) where year=None if not found."""
+    # Try "D Mon YYYY" format: e.g. "8 Mar 2026", "23 May 2025"
+    for m in re.finditer(r'(\d{1,2})\s+([A-Za-z]{3,9})\s*(\d{4})?', sub):
         day = int(m.group(1))
         mon_str = m.group(2).lower()[:3]
+        year = int(m.group(3)) if m.group(3) else None
         mon_num = MONTH_ORDER.get(mon_str)
         if mon_num and 1 <= day <= 31:
-            return mon_num * 100 + day, "{} {}".format(day, mon_str.capitalize())
-    # Try "Mon D" format: e.g. "Mar 8", "March 14"
-    for m in re.finditer(r'([A-Za-z]{3,9})\s+(\d{1,2})', sub):
+            return mon_num * 100 + day, "{} {}".format(day, mon_str.capitalize()), year
+    # Try "Mon D YYYY" format: e.g. "Mar 8 2026", "May 23, 2025"
+    for m in re.finditer(r'([A-Za-z]{3,9})\s+(\d{1,2})[,\s]*(\d{4})?', sub):
         mon_str = m.group(1).lower()[:3]
         day = int(m.group(2))
+        year = int(m.group(3)) if m.group(3) else None
         mon_num = MONTH_ORDER.get(mon_str)
         if mon_num and 1 <= day <= 31:
-            return mon_num * 100 + day, "{} {}".format(day, mon_str.capitalize())
-    return 9999, ""
+            return mon_num * 100 + day, "{} {}".format(day, mon_str.capitalize()), year
+    return 9999, "", None
 
 
 # ── Persistent file cache ─────────────────────────────────────────────────────
@@ -106,7 +116,7 @@ def load_cache():
         except Exception:
             pass
     return {"slot": None, "events": [], "fetched_at": None, "fetch_count": 0, "fetch_log": [],
-            "api_key": "", "serpapi_key": "", "backend": "SerpAPI (Google)"}
+            "api_key": "", "serpapi_key": "", "backend": "SerpAPI (Google)", "blocklist": []}
 
 
 def save_cache(data):
@@ -135,20 +145,25 @@ PAID_PATTERNS = re.compile(
 
 
 def snippet_confirms_free_entry(title_raw, snippet_raw, highlighted_words=None):
-    """Strict free entry check:
-    - Uses SerpAPI highlighted_words (exact Google match terms) if available
-    - Falls back to first 300 chars of snippet only (avoids sidebar content)
-    - Rejects if paid signals found (prices, buy tickets etc.)
-    RA appends the word Tickets to every title so we strip that first."""
-    title_clean = re.sub(r'\s*[⟋|].*$', '', title_raw).strip()
+    """Strict free entry check.
+    Requires 'free entry' to appear in the snippet CLOSE TO a date or Berlin/venue
+    marker (within 150 chars), proving it refers to THIS event not a sidebar event.
+    Also rejects if paid signals appear in the same window.
+    """
+    NEAR_WINDOW = 150
 
-    # Only check the first 300 chars of snippet — this is where Google surfaces
-    # the actual match text. Sidebar/related events appear much later in the body
-    # and caused false positives like the ELATA event.
-    short = snippet_raw[:300]
-    has_free = bool(FREE_ENTRY_PATTERNS.search(short)) or bool(FREE_ENTRY_PATTERNS.search(title_clean))
-    has_paid = bool(PAID_PATTERNS.search(short))
-    return has_free and not has_paid
+    for fe_match in FREE_ENTRY_PATTERNS.finditer(snippet_raw):
+        start = fe_match.start()
+        window = snippet_raw[max(0, start - NEAR_WINDOW): start + NEAR_WINDOW]
+        # Must be near a date signal or Berlin/venue to be about this specific event
+        near_event = re.search(
+            r'\d{1,2}[\s.]+[A-Za-z]{3}|[A-Za-z]{3}[\s.,]+\d{1,2}|Berlin|Venue|\d{4}',
+            window, re.IGNORECASE
+        )
+        if near_event and not PAID_PATTERNS.search(window):
+            return True
+    return False
+
 
 
 
@@ -162,7 +177,7 @@ def build_queries(now):
     return queries
 
 
-def fetch_via_serpapi(serpapi_key, now, status_placeholder=None):
+def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, status_placeholder=None):
     queries = build_queries(now)
     verified = []
     seen_urls = set()
@@ -177,6 +192,11 @@ def fetch_via_serpapi(serpapi_key, now, status_placeholder=None):
                 href = r.get("link", "")
                 if "ra.co/events" not in href or href in seen_urls:
                     continue
+                # Check blocklist by event ID (hardcoded + admin-added)
+                event_id = href.rstrip("/").split("/")[-1]
+                all_blocked = BLOCKED_EVENT_IDS | set(cache_blocklist or [])
+                if event_id in all_blocked:
+                    continue
                 seen_urls.add(href)
 
                 raw_title = r.get("title", "")
@@ -190,33 +210,41 @@ def fetch_via_serpapi(serpapi_key, now, status_placeholder=None):
 
                 clean_title = remove_noise(re.sub(r'\s*[⟋|]\s*RA\s*$', '', raw_title).strip())
                 full_sub = remove_noise(clean_subheading(raw_snippet))
-                sort_val, date_display = parse_date(full_sub)
+                # Parse date from full snippet (not just cleaned sub) to catch dates buried deep
+                sort_val, date_display, ev_year = parse_date(raw_snippet)
+                if sort_val == 9999:
+                    sort_val, date_display, ev_year = parse_date(full_sub)
                 verified.append({
                     "title": clean_title,
                     "url": href,
                     "date_display": date_display,
                     "date_sort": sort_val,
+                    "date_year": ev_year,
                     "subtitle": full_sub,
                 })
         except Exception as e:
             errors.append(str(e))
 
-    # Filter out past events and events outside current+next month
-    now_sort = now.month * 100 + now.day  # e.g. 301 for March 1
+    # Filter: keep only future events in current+next month and correct year
+    now_sort = now.month * 100 + now.day
+    current_year = now.year
     m1, m2, y1, y2 = get_search_months(now)
     valid_months = {MONTH_ORDER[m1.lower()[:3]], MONTH_ORDER[m2.lower()[:3]]}
 
     filtered = []
     for ev in verified:
         ds = ev["date_sort"]
+        ev_year = ev.get("date_year")
         if ds == 9999:
-            continue  # no date parsed, skip
+            continue  # no date parsed
+        # Reject if year is explicitly in the past
+        if ev_year is not None and ev_year < current_year:
+            continue
         ev_month = ds // 100
-        ev_day = ds % 100
         if ev_month not in valid_months:
             continue  # outside search window
         if ds < now_sort:
-            continue  # already past
+            continue  # already past this month
         filtered.append(ev)
 
     filtered.sort(key=lambda x: x["date_sort"])
@@ -352,6 +380,21 @@ with st.sidebar:
                 for entry in reversed(cache["fetch_log"][-10:]):
                     st.caption(entry)
 
+        st.markdown("---")
+        st.markdown("**🚫 Event Blocklist**")
+        st.caption("Add RA event IDs to block false positives (one per line). Find the ID in the URL, e.g. ra.co/events/**2327169**")
+        blocklist_text = st.text_area(
+            "Blocked event IDs",
+            value="\n".join(cache.get("blocklist", [])),
+            height=80,
+            label_visibility="collapsed"
+        )
+        if st.button("💾 Save Blocklist"):
+            new_bl = [x.strip() for x in blocklist_text.splitlines() if x.strip().isdigit()]
+            cache["blocklist"] = new_bl
+            save_cache(cache)
+            st.success("Saved {} blocked IDs".format(len(new_bl)))
+
         fetch_btn = st.button("🔍 Fetch Now", use_container_width=True,
                               disabled=(not in_slot and not no_cache_yet))
         if not in_slot and not no_cache_yet:
@@ -385,7 +428,7 @@ if should_fetch:
             if "Anthropic" in backend:
                 raw, error = fetch_via_anthropic(api_key, now)
             else:
-                raw, error = fetch_via_serpapi(serpapi_key, now)
+                raw, error = fetch_via_serpapi(serpapi_key, now, cache_blocklist=cache.get("blocklist", []))
 
         if error:
             st.error("Fetch error: {}".format(error))
