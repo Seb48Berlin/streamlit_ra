@@ -122,7 +122,7 @@ def load_cache():
         except Exception:
             pass
     return {"slot": None, "events": [], "fetched_at": None, "fetch_count": 0, "fetch_log": [],
-            "api_key": "", "serpapi_key": "", "backend": "SerpAPI (Google)", "blocklist": [], "name_blocklist": []}
+            "api_key": "", "serpapi_key": "", "backend": "SerpAPI (Google)", "blocklist": [], "name_blocklist": [], "allowlist": []}
 
 
 def save_cache(data):
@@ -187,6 +187,27 @@ def build_queries(now):
                 queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m, y))
     return queries
 
+
+
+def fetch_ra_event_info(event_id):
+    """Fetch title and date for a manually allowlisted RA event ID."""
+    url = "https://ra.co/events/{}".format(event_id)
+    try:
+        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        title = re.search(r'<title>([^<]+)</title>', resp.text)
+        title = title.group(1).strip() if title else "Event {}".format(event_id)
+        title = re.sub(r'\s*[|⟋].*$', '', title).strip()
+        m = re.search(r'"startDate"\s*:\s*"(\d{4})-(\d{2})-(\d{2})', resp.text)
+        if m:
+            year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            mon_str = [k for k, v in MONTH_ORDER.items() if v == month][0].capitalize()
+            date_display = "{} {}".format(day, mon_str)
+            date_sort = month * 100 + day
+            return {"title": title, "url": url, "date_display": date_display,
+                    "date_sort": date_sort, "date_year": year, "subtitle": "", "manual": True}
+    except Exception:
+        pass
+    return None
 
 def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=None, status_placeholder=None):
     queries = build_queries(now)
@@ -436,6 +457,19 @@ def _is_blocked(ev):
     return False
 events = [ev for ev in events if not _is_blocked(ev)]
 
+# Merge manually allowlisted events
+_allowlist = cache.get("allowlist", [])
+_existing_ids = set()
+for ev in events:
+    parts = ev.get("url", "").rstrip("/").split("/")
+    _existing_ids.add(next((p for p in reversed(parts) if p.isdigit()), ""))
+for _aid in _allowlist:
+    if str(_aid) not in _existing_ids:
+        _info = fetch_ra_event_info(_aid)
+        if _info:
+            events.append(_info)
+events.sort(key=lambda x: (x.get("date_year") or now.year, x["date_sort"]))
+
 if not events:
     st.info("🕐 No events cached yet. Admin login required to fetch.")
 else:
@@ -549,6 +583,17 @@ else:
                 new_nbl = [x.strip() for x in name_text.splitlines() if x.strip()]
                 cache["name_blocklist"] = new_nbl; save_cache(cache)
                 st.success("Saved {} custom name keywords".format(len(new_nbl)))
+
+        with st.expander("✅ Allowlist ({} manual events)".format(len(cache.get("allowlist", [])))):
+            st.caption("Add RA event IDs to always show, even if not fetched:")
+            allow_ids = list(cache.get("allowlist", []))
+            allow_text = st.text_area("Allowlist IDs", value="\n".join(str(x) for x in allow_ids),
+                                      height=80, key="allowlist_input", label_visibility="collapsed")
+            if st.button("💾 Save Allowlist"):
+                new_al = [x.strip() for x in allow_text.splitlines() if x.strip().isdigit()]
+                cache["allowlist"] = new_al; save_cache(cache)
+                st.success("Saved {} IDs".format(len(new_al)))
+                st.rerun()
 
         if st.button("🔍 Fetch Now", use_container_width=True):
             st.session_state.fetch_requested = True
