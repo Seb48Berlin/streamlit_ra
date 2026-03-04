@@ -490,7 +490,7 @@ if should_fetch:
             )
             cache["slot"] = this_slot
             cache["events"] = raw
-            cache["fetched_at"] = now.strftime("%d %b %H:%M")
+            cache["fetched_at"] = now.strftime("%d %b %Y")
             cache["fetch_count"] = cache.get("fetch_count", 0) + 1
             logs = cache.get("fetch_log", [])
             logs.append(log_entry)
@@ -541,7 +541,7 @@ if not events:
     st.info("🕐 No events cached yet. Admin login required to fetch.")
 else:
     if fetched_at:
-        st.caption("Last updated: {} *(cached)*".format(fetched_at))
+        st.caption("Last updated: {} · {} upcoming events".format(fetched_at, len(events)))
     st.divider()
 
     for ev in events:
