@@ -135,7 +135,7 @@ def save_cache(data):
 
 # ── API fetchers ──────────────────────────────────────────────────────────────
 
-# Free entry keywords — must appear in the snippet (not just the RA-appended title)
+# Free entry keywords — checked in both the event title and the Google snippet
 FREE_ENTRY_PATTERNS = re.compile(
     r'free\s*entry|free\s*admission|no\s*cover|eintritt\s*frei|free\s*entrance|gratuit',
     re.IGNORECASE
