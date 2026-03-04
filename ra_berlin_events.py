@@ -787,10 +787,11 @@ else:
                         _auto_sub = _src_sub
 
                     # Force subtitle to update in session state when date changes
-                    if st.session_state.get("dup_date_prev") != _dup_date:
+                    # Force subtitle to update when date OR selected event changes
+                    if (st.session_state.get("dup_date_prev") != _dup_date or
+                            st.session_state.get("dup_sel_prev") != _sel_idx):
                         st.session_state["dup_date_prev"] = _dup_date
-                        st.session_state["dup_sub"] = _auto_sub
-
+                        st.session_state["dup_sel_prev"] = _sel_idx
                     _dup_sub = st.text_input("Subtitle", key="dup_sub",
                                              placeholder="Subtitle (auto-updated from date)…")
                     if st.button("📋 Duplicate to Allowlist"):
