@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timedelta
 import pytz
 
-st.set_page_config(page_title="Techno Berlin Free Entry", page_icon="🎵", layout="wide")
+st.set_page_config(page_title="Techno Berlin Free Entry", page_icon="🎵", layout="wide", initial_sidebar_state="collapsed")
 
 BERLIN_TZ = pytz.timezone("Europe/Berlin")
 ALLOWED_HOURS = {11, 16, 21}
@@ -356,6 +356,38 @@ Only ra.co/events URLs. No markdown. Return valid JSON array only."""
 if "admin" not in st.session_state:
     st.session_state.admin = False
 
+
+# ── Fixed bottom-left admin toggle ───────────────────────────────────────────
+st.markdown("""
+<style>
+[data-testid="collapsedControl"] { display: none !important; }
+.admin-toggle {
+    position: fixed;
+    bottom: 18px;
+    left: 18px;
+    z-index: 9999;
+    background: #1e1e1e;
+    border: 1px solid #444;
+    color: #888;
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+.admin-toggle:hover { color: #fff; border-color: #888; }
+</style>
+<a class="admin-toggle" onclick="
+    const btn = window.parent.document.querySelector('[data-testid=\"collapsedControl\"]');
+    if(btn) btn.click();
+    else {
+        const open = window.parent.document.querySelector('[data-testid=\"stSidebarCollapseButton\"]');
+        if(open) open.click();
+    }
+">&#8250;</a>
+""", unsafe_allow_html=True)
+
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
 now = get_now()
@@ -371,17 +403,17 @@ h_left, m_left = divmod(int(delta.total_seconds() // 60), 60)
 
 with st.sidebar:
     if not st.session_state.admin:
-        st.markdown("### 🔐 Admin Login")
-        pw = st.text_input("Password", type="password")
-        if st.button("Login"):
+        st.markdown("🔐 **Admin**")
+        pw = st.text_input("Password", type="password", label_visibility="collapsed", placeholder="Password")
+        if st.button("Login", use_container_width=True):
             if pw == ADMIN_PASSWORD:
                 st.session_state.admin = True
                 st.rerun()
             else:
                 st.error("Wrong password")
     else:
-        st.markdown("### ⚙️ Admin Panel")
-        if st.button("🚪 Logout"):
+        st.markdown("⚙️ **Admin**")
+        if st.button("🚪 Logout", use_container_width=True):
             st.session_state.admin = False
             st.rerun()
 
