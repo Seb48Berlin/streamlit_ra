@@ -499,10 +499,8 @@ with st.sidebar:
                 save_cache(cache)
                 st.success("Saved {} custom name keywords".format(len(new_nbl)))
 
-        fetch_btn = st.button("🔍 Fetch Now", use_container_width=True,
-                              disabled=(not in_slot and not no_cache_yet))
-        if not in_slot and not no_cache_yet:
-            st.caption("Auto-fetches at 11:00, 16:00, 21:00")
+        fetch_btn = st.button("🔍 Fetch Now", use_container_width=True)
+
     # end admin block
 
 # ── Resolve backend/keys from cache if not admin ──────────────────────────────
