@@ -458,16 +458,15 @@ def _is_blocked(ev):
 events = [ev for ev in events if not _is_blocked(ev)]
 
 # Merge manually allowlisted events
-_allowlist = cache.get("allowlist", [])
 _existing_ids = set()
 for ev in events:
     parts = ev.get("url", "").rstrip("/").split("/")
     _existing_ids.add(next((p for p in reversed(parts) if p.isdigit()), ""))
-for _aid in _allowlist:
-    if str(_aid) not in _existing_ids:
-        _info = fetch_ra_event_info(_aid)
-        if _info:
-            events.append(_info)
+for _manual_ev in cache.get("allowlist_events", []):
+    parts = _manual_ev.get("url", "").rstrip("/").split("/")
+    _mid = next((p for p in reversed(parts) if p.isdigit()), "")
+    if _mid not in _existing_ids:
+        events.append(_manual_ev)
 events.sort(key=lambda x: (x.get("date_year") or now.year, x["date_sort"]))
 
 if not events:
@@ -584,16 +583,36 @@ else:
                 cache["name_blocklist"] = new_nbl; save_cache(cache)
                 st.success("Saved {} custom name keywords".format(len(new_nbl)))
 
-        with st.expander("✅ Allowlist ({} manual events)".format(len(cache.get("allowlist", [])))):
-            st.caption("Add RA event IDs to always show, even if not fetched:")
-            allow_ids = list(cache.get("allowlist", []))
-            allow_text = st.text_area("Allowlist IDs", value="\n".join(str(x) for x in allow_ids),
-                                      height=80, key="allowlist_input", label_visibility="collapsed")
-            if st.button("💾 Save Allowlist"):
-                new_al = [x.strip() for x in allow_text.splitlines() if x.strip().isdigit()]
-                cache["allowlist"] = new_al; save_cache(cache)
-                st.success("Saved {} IDs".format(len(new_al)))
-                st.rerun()
+        with st.expander("✅ Allowlist ({} manual events)".format(len(cache.get("allowlist_events", [])))):
+            st.caption("Manually add events that aren't fetched automatically:")
+            _al_events = cache.get("allowlist_events", [])
+            # Show existing
+            for i, _ev in enumerate(_al_events):
+                c1, c2 = st.columns([5, 1])
+                c1.caption("**{}** · {} · {}".format(_ev.get("title",""), _ev.get("date_display",""), _ev.get("url","")))
+                if c2.button("✕", key="al_del_{}".format(i)):
+                    _al_events.pop(i); cache["allowlist_events"] = _al_events; save_cache(cache); st.rerun()
+            st.markdown("**Add event:**")
+            _al_id   = st.text_input("RA Event ID", key="al_id", placeholder="e.g. 2372095")
+            _al_title = st.text_input("Title", key="al_title", placeholder="e.g. SINGULARITY x Loone bei Loone, Berlin")
+            _al_date  = st.text_input("Date", key="al_date", placeholder="e.g. 22 Mar")
+            _al_year  = st.text_input("Year", key="al_year", placeholder="e.g. 2026")
+            if st.button("➕ Add to Allowlist"):
+                if _al_id.strip().isdigit() and _al_title.strip() and _al_date.strip():
+                    sv, dd, _ = parse_date(_al_date.strip() + " " + _al_year.strip())
+                    _al_events.append({
+                        "title": _al_title.strip(),
+                        "url": "https://ra.co/events/{}".format(_al_id.strip()),
+                        "date_display": dd,
+                        "date_sort": sv,
+                        "date_year": int(_al_year.strip()) if _al_year.strip().isdigit() else now.year,
+                        "subtitle": "",
+                        "manual": True
+                    })
+                    cache["allowlist_events"] = _al_events; save_cache(cache)
+                    st.success("Added!"); st.rerun()
+                else:
+                    st.error("Please fill in ID, title and date.")
 
         if st.button("🔍 Fetch Now", use_container_width=True):
             st.session_state.fetch_requested = True
