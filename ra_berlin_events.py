@@ -17,12 +17,10 @@ ADMIN_PASSWORD = "admin1234"  # change this
 BLOCKED_EVENT_IDS = {
     "2327169",  # ELATA x GROOVE THEORY at ÆDEN
     "2094386",  # Birgits Weekender May 2025 (paid)
-    "2328803",  # past Jan event, false positive
 }
 
 # Blocklist: event name keywords — events whose title contains any of these are blocked
 BLOCKED_NAME_KEYWORDS = [
-    "Birgits Weekender",  # partially free only, main event is paid
 ]
 
 MONTH_ORDER = {
@@ -38,14 +36,10 @@ def get_now():
 
 
 def get_search_months(now):
-    """Return (m1, m2, m3, y1, y2, y3) for the current + next 2 months."""
+    """Return (current_month_abbr, next_month_abbr, year_str) for search query."""
     this = now.replace(day=1)
     nxt = (this + timedelta(days=32)).replace(day=1)
-    nxt2 = (nxt + timedelta(days=32)).replace(day=1)
-    return (
-        this.strftime("%b"), nxt.strftime("%b"), nxt2.strftime("%b"),
-        this.strftime("%Y"), nxt.strftime("%Y"), nxt2.strftime("%Y"),
-    )
+    return this.strftime("%b"), nxt.strftime("%b"), now.strftime("%Y"), nxt.strftime("%Y")
 
 
 def slot_label(dt):
@@ -73,8 +67,6 @@ def remove_noise(text):
     text = re.sub(r'\*?\s*free\s*(entry|ticket)\s*\*?', ' ', text, flags=re.IGNORECASE)
     # Remove leftover lone asterisks
     text = re.sub(r'\*', '', text)
-    # Remove "Interested: 81" or "Interested. 81"
-    text = re.sub(r'Interested[:.]\ *\d+', '', text, flags=re.IGNORECASE)
     # Collapse multiple separators: ··, --, · ·, etc.
     text = re.sub(r'([·\-–—|])\s*\1+', r'\1', text)
     text = re.sub(r'\s*[·\-–—|]\s*$', '', text)   # trailing separator
@@ -157,20 +149,16 @@ PAID_PATTERNS = re.compile(
 
 def snippet_confirms_free_entry(title_raw, snippet_raw, highlighted_words=None):
     """Strict free entry check.
-    'Free entry' must appear either:
-      (a) in the title — RA puts it there explicitly, definitive proof, OR
-      (b) in the snippet close to a date/Berlin/venue marker (within 150 chars).
+    Requires 'free entry' to appear in the snippet CLOSE TO a date or Berlin/venue
+    marker (within 150 chars), proving it refers to THIS event not a sidebar event.
     Also rejects if paid signals appear in the same window.
     """
-    # (a) Free entry in the title is definitive
-    if FREE_ENTRY_PATTERNS.search(title_raw) and not PAID_PATTERNS.search(title_raw):
-        return True
-
-    # (b) Free entry in the snippet, near a date or Berlin/venue marker
     NEAR_WINDOW = 150
+
     for fe_match in FREE_ENTRY_PATTERNS.finditer(snippet_raw):
         start = fe_match.start()
         window = snippet_raw[max(0, start - NEAR_WINDOW): start + NEAR_WINDOW]
+        # Must be near a date signal or Berlin/venue to be about this specific event
         near_event = re.search(
             r'\d{1,2}[\s.]+[A-Za-z]{3}|[A-Za-z]{3}[\s.,]+\d{1,2}|Berlin|Venue|\d{4}',
             window, re.IGNORECASE
@@ -183,38 +171,15 @@ def snippet_confirms_free_entry(title_raw, snippet_raw, highlighted_words=None):
 
 
 def build_queries(now):
-    m1, m2, m3, y1, y2, y3 = get_search_months(now)
-    months = [(m1, y1), (m2, y2), (m3, y3)]
+    m1, m2, y1, y2 = get_search_months(now)
+    # Search multiple free entry phrasings to catch German, alternative English etc.
     free_phrases = ["Free Entry", "Free Ticket", "Free Admission", "Eintritt frei", "freier Eintritt"]
     queries = []
-    seen = set()
     for phrase in free_phrases:
-        for m, y in months:
-            key = (phrase, m, y)
-            if key not in seen:
-                seen.add(key)
-                queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m, y))
+        queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m1, y1))
+        if m2 != m1:
+            queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m2, y2))
     return queries
-
-
-
-def fetch_ra_date(url):
-    """Fetch the RA event page and extract the real event date.
-    Returns (date_sort, date_display, year) or (9999, "", None) on failure.
-    """
-    try:
-        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        if resp.status_code != 200:
-            return 9999, "", None
-        # RA embeds date in <script type="application/ld+json"> as "startDate": "2026-03-13T..."
-        m = re.search(r'"startDate"\s*:\s*"(\d{4})-(\d{2})-(\d{2})', resp.text)
-        if m:
-            year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            mon_str = [k for k, v in MONTH_ORDER.items() if v == month][0].capitalize()
-            return month * 100 + day, "{} {}".format(day, mon_str), year
-    except Exception:
-        pass
-    return 9999, "", None
 
 
 def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=None, status_placeholder=None):
@@ -224,33 +189,20 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
     errors = []
 
     for q in queries:
-        # Extract the month and year this query was built for — used to validate parsed dates
-        q_month_match = re.search(r'"([A-Za-z]{3})".*?"(\d{4})"', q)
-        q_month_num = MONTH_ORDER.get(q_month_match.group(1).lower()) if q_month_match else None
-        q_year = int(q_month_match.group(2)) if q_month_match else None
         params = {"engine": "google", "q": q, "api_key": serpapi_key, "num": 20}
         try:
             resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
             resp.raise_for_status()
             for r in resp.json().get("organic_results", []):
                 href = r.get("link", "")
-                if "ra.co/events" not in href:
+                if "ra.co/events" not in href or href in seen_urls:
                     continue
-                # Normalize immediately: strip query params + locale prefix (de/es/fr.ra.co → ra.co)
-                href = re.split(r'[?#]', href)[0]
-                href = re.sub(r'https?://[a-z]{2}\.ra\.co', 'https://ra.co', href)
-                if href in seen_urls:
-                    continue
-                # Extract numeric event ID and deduplicate by ID (catches slug variants)
-                parts = href.rstrip("/").split("/")
-                event_id = next((p for p in reversed(parts) if p.isdigit()), parts[-1])
-                if event_id in seen_urls:
-                    continue
+                # Check blocklist by event ID (hardcoded + admin-added)
+                event_id = href.rstrip("/").split("/")[-1]
                 all_blocked = BLOCKED_EVENT_IDS | set(cache_blocklist or [])
                 if event_id in all_blocked:
                     continue
                 seen_urls.add(href)
-                seen_urls.add(event_id)
 
                 raw_title = r.get("title", "")
                 raw_snippet = r.get("snippet", "")
@@ -260,10 +212,10 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
                 if any(kw.lower() in raw_title.lower() for kw in all_name_blocked if kw.strip()):
                     continue
 
-                # Must be in Berlin — check full title (before stripping) and snippet
-                # We don't strip at ⟋ here because "Berlin" often appears after it in RA titles
-                title_for_city = re.sub(r'\s*[⟋|].*$', '', raw_title)  # used only for city exclusion below
-                if not re.search(r'\bBerlin\b', raw_title + " " + raw_snippet[:300], re.IGNORECASE):
+                # Must be in Berlin — check URL, title AND snippet for Berlin, Germany context
+                # Reject if another city appears in title (Vienna, Minneapolis, etc.)
+                title_for_city = re.sub(r'\s*[⟋|].*$', '', raw_title)
+                if not re.search(r'\bBerlin\b', href + " " + title_for_city + " " + raw_snippet[:300], re.IGNORECASE):
                     continue
                 # Reject if a non-Berlin city appears in the VENUE part of the title
                 # (after "bei" or "at" or "@") — ignore artist/event name part
@@ -288,13 +240,10 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
 
                 clean_title = remove_noise(re.sub(r'\s*[⟋|]\s*RA\s*$', '', raw_title).strip())
                 full_sub = remove_noise(clean_subheading(raw_snippet))
-                # Fetch the real date directly from the RA event page — snippets are unreliable
-                sort_val, date_display, ev_year = fetch_ra_date(href)
+                # Parse date from full snippet (not just cleaned sub) to catch dates buried deep
+                sort_val, date_display, ev_year = parse_date(raw_snippet)
                 if sort_val == 9999:
-                    # Fallback to snippet if fetch failed
-                    sort_val, date_display, ev_year = parse_date(raw_snippet[:80])
-                if sort_val == 9999:
-                    sort_val, date_display, ev_year = parse_date(raw_title)
+                    sort_val, date_display, ev_year = parse_date(full_sub)
                 verified.append({
                     "title": clean_title,
                     "url": href,
@@ -306,52 +255,37 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
         except Exception as e:
             errors.append(str(e))
 
-    # Filter: keep only future events within valid months and correct year
+    # Filter: keep only future events in current+next month and correct year
+    now_sort = now.month * 100 + now.day
     current_year = now.year
-    m1, m2, m3, y1, y2, y3 = get_search_months(now)
-    valid_months = {MONTH_ORDER[m1.lower()[:3]], MONTH_ORDER[m2.lower()[:3]], MONTH_ORDER[m3.lower()[:3]]}
-    today = (current_year, now.month, now.day)
+    m1, m2, y1, y2 = get_search_months(now)
+    valid_months = {MONTH_ORDER[m1.lower()[:3]], MONTH_ORDER[m2.lower()[:3]]}
 
-    # Deduplicate by event ID (catches same event under different URLs/slugs)
-    seen_ids = set()
     filtered = []
     for ev in verified:
         ds = ev["date_sort"]
         ev_year = ev.get("date_year")
         if ds == 9999:
             continue  # no date parsed
+        # Reject if year is explicitly in the past
+        if ev_year is not None and ev_year < current_year:
+            continue
         ev_month = ds // 100
-        ev_day = ds % 100
         if ev_month not in valid_months:
-            continue  # outside 3-month search window
-        # Use known year or assume current year for comparison
-        assumed_year = ev_year if ev_year is not None else current_year
-        # Reject if explicitly a past year
-        if assumed_year < current_year:
-            continue
-        # Reject if date is in the past (proper year/month/day comparison)
-        if (assumed_year, ev_month, ev_day) < today:
-            continue
-        # Deduplicate by event ID extracted from URL
-        url_clean = re.split(r'[?#]', ev.get("url", ""))[0].rstrip("/")
-        parts = url_clean.split("/")
-        ev_id = next((p for p in reversed(parts) if p.isdigit()), url_clean)
-        if ev_id in seen_ids:
-            continue
-        seen_ids.add(ev_id)
+            continue  # outside search window
+        if ds < now_sort:
+            continue  # already past this month
         filtered.append(ev)
 
-    filtered.sort(key=lambda x: (x.get("date_year") or current_year, x["date_sort"]))
+    filtered.sort(key=lambda x: x["date_sort"])
     return filtered, (", ".join(errors) if errors else None)
 
 
 def fetch_via_anthropic(api_key, now):
-    m1, m2, m3, y1, y2, y3 = get_search_months(now)
+    m1, m2, y1, y2 = get_search_months(now)
     months_str = '"{}" "{}"'.format(m1, y1)
     if m2 != m1:
         months_str += ' OR "{}" "{}"'.format(m2, y2)
-    if m3 != m2:
-        months_str += ' OR "{}" "{}"'.format(m3, y3)
     system_prompt = """You are a data extraction assistant. Search the web and return ONLY a JSON array of Berlin techno free entry events from ra.co.
 Each item must have:
   - title: event name with "free entry" (any case/brackets/asterisks) fully removed
@@ -461,8 +395,8 @@ with st.sidebar:
         else:
             st.warning("⏳ Next: **{}** ({} h {} min)".format(nxt.strftime("%H:%M"), h_left, m_left))
 
-        m1, m2, m3, y1, y2, y3 = get_search_months(now)
-        st.markdown("**🔍 Searching:** {} {} · {} {} · {} {}".format(m1, y1, m2, y2, m3, y3))
+        m1, m2, y1, y2 = get_search_months(now)
+        st.markdown("**🔍 Searching:** {} {} + {} {}".format(m1, y1, m2, y2))
 
         st.markdown("---")
         budget = 93
@@ -517,8 +451,10 @@ with st.sidebar:
                 save_cache(cache)
                 st.success("Saved {} custom name keywords".format(len(new_nbl)))
 
-        fetch_btn = st.button("🔍 Fetch Now", use_container_width=True)
-
+        fetch_btn = st.button("🔍 Fetch Now", use_container_width=True,
+                              disabled=(not in_slot and not no_cache_yet))
+        if not in_slot and not no_cache_yet:
+            st.caption("Auto-fetches at 11:00, 16:00, 21:00")
     # end admin block
 
 # ── Resolve backend/keys from cache if not admin ──────────────────────────────
