@@ -275,29 +275,42 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
         except Exception as e:
             errors.append(str(e))
 
-    # Filter: keep only future events in current+next month and correct year
-    now_sort = now.month * 100 + now.day
+    # Filter: keep only future events within valid months and correct year
     current_year = now.year
     m1, m2, m3, y1, y2, y3 = get_search_months(now)
     valid_months = {MONTH_ORDER[m1.lower()[:3]], MONTH_ORDER[m2.lower()[:3]], MONTH_ORDER[m3.lower()[:3]]}
+    today = (current_year, now.month, now.day)
 
+    # Deduplicate by event ID (catches same event under different URLs/slugs)
+    seen_ids = set()
     filtered = []
     for ev in verified:
         ds = ev["date_sort"]
         ev_year = ev.get("date_year")
         if ds == 9999:
             continue  # no date parsed
-        # Reject if year is explicitly in the past
-        if ev_year is not None and ev_year < current_year:
-            continue
         ev_month = ds // 100
+        ev_day = ds % 100
         if ev_month not in valid_months:
-            continue  # outside search window
-        if ds < now_sort:
-            continue  # already past this month
+            continue  # outside 3-month search window
+        # Use known year or assume current year for comparison
+        assumed_year = ev_year if ev_year is not None else current_year
+        # Reject if explicitly a past year
+        if assumed_year < current_year:
+            continue
+        # Reject if date is in the past (proper year/month/day comparison)
+        if (assumed_year, ev_month, ev_day) < today:
+            continue
+        # Deduplicate by event ID extracted from URL
+        url_clean = re.split(r'[?#]', ev.get("url", ""))[0].rstrip("/")
+        parts = url_clean.split("/")
+        ev_id = next((p for p in reversed(parts) if p.isdigit()), url_clean)
+        if ev_id in seen_ids:
+            continue
+        seen_ids.add(ev_id)
         filtered.append(ev)
 
-    filtered.sort(key=lambda x: x["date_sort"])
+    filtered.sort(key=lambda x: (x.get("date_year") or current_year, x["date_sort"]))
     return filtered, (", ".join(errors) if errors else None)
 
 
