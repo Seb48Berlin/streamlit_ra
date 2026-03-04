@@ -480,7 +480,7 @@ st.markdown("""
 with st.container():
     st.markdown('<div class="admin-expander">', unsafe_allow_html=True)
     if not st.session_state.admin:
-        with st.expander("›", expanded=False):
+        with st.expander("Admin", expanded=False, icon="🔐"):
             pw = st.text_input("Password", type="password", key="admin_pw",
                                label_visibility="collapsed", placeholder="Admin password")
             if st.button("Login", key="admin_login", use_container_width=True):
