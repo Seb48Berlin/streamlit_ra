@@ -357,6 +357,8 @@ Only ra.co/events URLs. No markdown. Return valid JSON array only."""
 
 if "admin" not in st.session_state:
     st.session_state.admin = False
+if "fetch_requested" not in st.session_state:
+    st.session_state.fetch_requested = False
 
 st.markdown(
     "<style>[data-testid='collapsedControl']{display:none !important}</style>",
@@ -385,8 +387,6 @@ with st.sidebar:
 backend = cache.get("backend", "SerpAPI (Google)")
 api_key = cache.get("api_key", "")
 serpapi_key = cache.get("serpapi_key", "")
-fetch_btn = False
-
 # ── Auto-fetch ────────────────────────────────────────────────────────────────
 
 should_fetch = False
@@ -394,8 +394,9 @@ if no_cache_yet:
     should_fetch = True
 elif in_slot and this_slot != cache.get("slot"):
     should_fetch = True
-if st.session_state.admin and fetch_btn:
+if st.session_state.fetch_requested:
     should_fetch = True
+    st.session_state.fetch_requested = False
 
 if should_fetch:
     has_key = (api_key and "Anthropic" in backend) or (serpapi_key and "SerpAPI" in backend)
@@ -567,5 +568,7 @@ with st.container():
                     cache["name_blocklist"] = new_nbl; save_cache(cache)
                     st.success("Saved {} custom name keywords".format(len(new_nbl)))
 
-            fetch_btn = st.button("🔍 Fetch Now", use_container_width=True)
+            if st.button("🔍 Fetch Now", use_container_width=True):
+                st.session_state.fetch_requested = True
+                st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
