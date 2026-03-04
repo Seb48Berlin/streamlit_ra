@@ -197,6 +197,26 @@ def build_queries(now):
     return queries
 
 
+
+def fetch_ra_date(url):
+    """Fetch the RA event page and extract the real event date.
+    Returns (date_sort, date_display, year) or (9999, "", None) on failure.
+    """
+    try:
+        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code != 200:
+            return 9999, "", None
+        # RA embeds date in <script type="application/ld+json"> as "startDate": "2026-03-13T..."
+        m = re.search(r'"startDate"\s*:\s*"(\d{4})-(\d{2})-(\d{2})', resp.text)
+        if m:
+            year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            mon_str = [k for k, v in MONTH_ORDER.items() if v == month][0].capitalize()
+            return month * 100 + day, "{} {}".format(day, mon_str), year
+    except Exception:
+        pass
+    return 9999, "", None
+
+
 def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=None, status_placeholder=None):
     queries = build_queries(now)
     verified = []
@@ -268,15 +288,13 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
 
                 clean_title = remove_noise(re.sub(r'\s*[⟋|]\s*RA\s*$', '', raw_title).strip())
                 full_sub = remove_noise(clean_subheading(raw_snippet))
-                # Parse date from start of snippet (first 80 chars) or title
-                sort_val, date_display, ev_year = parse_date(raw_snippet[:80])
+                # Fetch the real date directly from the RA event page — snippets are unreliable
+                sort_val, date_display, ev_year = fetch_ra_date(href)
+                if sort_val == 9999:
+                    # Fallback to snippet if fetch failed
+                    sort_val, date_display, ev_year = parse_date(raw_snippet[:80])
                 if sort_val == 9999:
                     sort_val, date_display, ev_year = parse_date(raw_title)
-                # Validate: parsed month must match the query month that returned this result.
-                # If it doesn't, the date came from a sidebar/related event in the snippet — discard.
-                if q_month_num is not None and sort_val != 9999:
-                    if (sort_val // 100) != q_month_num:
-                        continue
                 verified.append({
                     "title": clean_title,
                     "url": href,
