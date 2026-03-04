@@ -220,10 +220,6 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
                 raw_title = r.get("title", "")
                 raw_snippet = r.get("snippet", "")
 
-                # Reject if RA title has '· Tickets' suffix — means paid event
-                if re.search(r'[·|]\s*Tickets\b', raw_title, re.IGNORECASE):
-                    continue
-
                 # Check name blocklist (hardcoded + admin-added)
                 all_name_blocked = BLOCKED_NAME_KEYWORDS + (name_blocklist or [])
                 if any(kw.lower() in raw_title.lower() for kw in all_name_blocked if kw.strip()):
