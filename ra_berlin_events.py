@@ -429,6 +429,20 @@ st.title("Techno Berlin Free Entry")
 events = cache.get("events", [])
 fetched_at = cache.get("fetched_at")
 
+# Apply blocklists to cached events at display time
+_all_blocked_ids = BLOCKED_EVENT_IDS | set(cache.get("blocklist", []))
+_all_blocked_names = BLOCKED_NAME_KEYWORDS + cache.get("name_blocklist", [])
+def _is_blocked(ev):
+    url_parts = ev.get("url", "").rstrip("/").split("/")
+    ev_id = next((p for p in reversed(url_parts) if p.isdigit()), "")
+    if ev_id in _all_blocked_ids:
+        return True
+    title = ev.get("title", "")
+    if any(kw.lower() in title.lower() for kw in _all_blocked_names if kw.strip()):
+        return True
+    return False
+events = [ev for ev in events if not _is_blocked(ev)]
+
 if not events:
     st.info("🕐 No events cached yet. Admin login required to fetch.")
 else:
