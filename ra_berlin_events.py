@@ -49,8 +49,6 @@ h2, h3, p, label {{
     color: #fff !important;
     text-shadow: 0 1px 4px rgba(0,0,0,0.8) !important;
 }}
-#title-no {{ color: #fff !important; -webkit-text-stroke: 0.6px #000 !important; text-shadow: none !important; }}
-/* Expander — fully transparent, no hover effect */
 .stExpander,
 .stExpander summary,
 .stExpander summary:hover,
@@ -67,7 +65,6 @@ details:hover,
 [data-baseweb="accordion"],
 [data-baseweb="accordion"] > div,
 [data-baseweb="accordion"] > div:hover,
-[data-baseweb="block"],
 [data-testid="stBottom"] > div,
 [data-testid="stBottom"] > div:hover,
 [data-testid="stBottom"] * {{
@@ -76,7 +73,6 @@ details:hover,
     box-shadow: none !important;
     border-color: rgba(255,255,255,0.15) !important;
 }}
-/* Kill any white hover overlay Streamlit injects */
 [data-baseweb="accordion"] button:hover,
 [data-baseweb="accordion"] button:focus,
 [data-testid="stExpander"] button,
@@ -86,7 +82,6 @@ details:hover,
     outline: none !important;
     box-shadow: none !important;
 }}
-/* Target Streamlit emotion-cache expander row and all its children */
 .ewmru5c2, .ewmru5c2 *,
 .ewmru5c2:hover, .ewmru5c2:hover *,
 .emntfgb2, .emntfgb2:hover,
@@ -97,12 +92,6 @@ details:hover,
 }}
 </style>
 """.format(bg=_bg_data), unsafe_allow_html=True)
-
-
-
-
-
-
 
 
 BERLIN_TZ = pytz.timezone("Europe/Berlin")
@@ -166,7 +155,6 @@ def remove_noise(text):
     # Remove leftover lone asterisks
     text = re.sub(r'\*', '', text)
     text = re.sub(r'Interested[:.] *\d+', '', text, flags=re.IGNORECASE)
-    # Remove RA copyright notices and branding
     text = re.sub(r'\u00a9\s*\d{4}\s*Resident Advisor[^.]*\.?', '', text, flags=re.IGNORECASE)
     text = re.sub(r'All rights reserved\.?', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\bResident Advisor\b', '', text, flags=re.IGNORECASE)
@@ -223,7 +211,7 @@ def load_cache():
         except Exception:
             pass
     return {"slot": None, "events": [], "fetched_at": None, "fetch_count": 0, "fetch_log": [],
-            "api_key": "", "serpapi_key": "", "backend": "SerpAPI (Google)", "blocklist": [], "name_blocklist": [], "allowlist": []}
+            "api_key": "", "serpapi_key": "", "backend": "SerpAPI (Google)", "blocklist": [], "name_blocklist": []}
 
 
 def save_cache(data):
@@ -236,7 +224,7 @@ def save_cache(data):
 
 # ── API fetchers ──────────────────────────────────────────────────────────────
 
-# Free entry keywords — checked in both the event title and the Google snippet
+# Free entry keywords — must appear in the snippet (not just the RA-appended title)
 FREE_ENTRY_PATTERNS = re.compile(
     r'free\s*entry|free\s*admission|no\s*cover|eintritt\s*frei|free\s*entrance|gratuit',
     re.IGNORECASE
@@ -289,27 +277,6 @@ def build_queries(now):
     return queries
 
 
-
-def fetch_ra_event_info(event_id):
-    """Fetch title and date for a manually allowlisted RA event ID."""
-    url = "https://ra.co/events/{}".format(event_id)
-    try:
-        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        title = re.search(r'<title>([^<]+)</title>', resp.text)
-        title = title.group(1).strip() if title else "Event {}".format(event_id)
-        title = re.sub(r'\s*[|⟋].*$', '', title).strip()
-        m = re.search(r'"startDate"\s*:\s*"(\d{4})-(\d{2})-(\d{2})', resp.text)
-        if m:
-            year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            mon_str = [k for k, v in MONTH_ORDER.items() if v == month][0].capitalize()
-            date_display = "{} {}".format(day, mon_str)
-            date_sort = month * 100 + day
-            return {"title": title, "url": url, "date_display": date_display,
-                    "date_sort": date_sort, "date_year": year, "subtitle": "", "manual": True}
-    except Exception:
-        pass
-    return None
-
 def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=None, status_placeholder=None):
     queries = build_queries(now)
     verified = []
@@ -325,10 +292,8 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
                 href = r.get("link", "")
                 if "ra.co/events" not in href:
                     continue
-                # Normalize: strip query params + locale prefix (de/es/fr.ra.co → ra.co)
                 href = re.split(r'[?#]', href)[0]
                 href = re.sub(r'https?://[a-z]{2}\.ra\.co', 'https://ra.co', href)
-                # Extract numeric event ID, deduplicate by both URL and ID
                 parts = href.rstrip("/").split("/")
                 event_id = next((p for p in reversed(parts) if p.isdigit()), parts[-1])
                 if href in seen_urls or event_id in seen_urls:
@@ -488,7 +453,7 @@ nxt = next_slot(now)
 delta = nxt - now
 h_left, m_left = divmod(int(delta.total_seconds() // 60), 60)
 
-# ── SIDEBAR — emptied, admin panel is at bottom of page ────────────────────
+# ── SIDEBAR — emptied, admin panel is at bottom ────────────────────────────
 with st.sidebar:
     st.empty()
 
@@ -500,10 +465,6 @@ serpapi_key = cache.get("serpapi_key", "")
 # ── Auto-fetch ────────────────────────────────────────────────────────────────
 
 should_fetch = False
-if no_cache_yet:
-    should_fetch = True
-elif in_slot and this_slot != cache.get("slot"):
-    should_fetch = True
 if st.session_state.fetch_requested:
     should_fetch = True
     st.session_state.fetch_requested = False
@@ -542,6 +503,7 @@ if should_fetch:
 st.markdown(
     "<style>"
     "[data-testid='stMainBlockContainer'] { padding-top: 1rem !important; }"
+    "#title-no { color: #fff !important; -webkit-text-stroke: 0.6px #000 !important; text-shadow: none !important; }"
     "</style>"
     "<h1 style='margin-top:0;padding-top:0;font-size:2.2rem;font-weight:800;letter-spacing:0.02em;text-shadow:none;'>"
     "<span style='color:#111 !important;-webkit-text-stroke:0.5px #fff;text-shadow:none !important;'>FreeBerlin.Tech</span>"
@@ -552,7 +514,6 @@ st.markdown(
 events = cache.get("events", [])
 fetched_at = cache.get("fetched_at")
 
-# Apply blocklists to cached events at display time
 _all_blocked_ids = BLOCKED_EVENT_IDS | set(cache.get("blocklist", []))
 _all_blocked_names = BLOCKED_NAME_KEYWORDS + cache.get("name_blocklist", [])
 def _is_blocked(ev):
@@ -560,13 +521,11 @@ def _is_blocked(ev):
     ev_id = next((p for p in reversed(url_parts) if p.isdigit()), "")
     if ev_id in _all_blocked_ids:
         return True
-    title = ev.get("title", "")
-    if any(kw.lower() in title.lower() for kw in _all_blocked_names if kw.strip()):
+    if any(kw.lower() in ev.get("title", "").lower() for kw in _all_blocked_names if kw.strip()):
         return True
     return False
 events = [ev for ev in events if not _is_blocked(ev)]
 
-# Merge manually allowlisted events
 _existing_ids = set()
 for ev in events:
     parts = ev.get("url", "").rstrip("/").split("/")
@@ -579,8 +538,7 @@ for _manual_ev in cache.get("allowlist_events", []):
 events.sort(key=lambda x: (x.get("date_year") or now.year, x["date_sort"]))
 
 if not events:
-    if not cache.get("allowlist_events"):
-        st.info("🕐 No events cached yet. Admin login required to fetch.")
+    st.info("🕐 No events cached yet. Admin login required to fetch.")
 else:
     if fetched_at:
         st.caption("Last updated: {} *(cached)*".format(fetched_at))
@@ -592,7 +550,6 @@ else:
         title = ev.get("title", "")
         url = ev.get("url", "")
 
-        # Add weekday prefix to date_str
         date_label = date_str
         if date_str:
             try:
@@ -602,7 +559,6 @@ else:
             except Exception:
                 pass
 
-        # Layout: date pill | clickable title + full subtitle
         col1, col2 = st.columns([1, 7])
         with col1:
             if date_label:
@@ -705,8 +661,6 @@ else:
 
         with st.expander("✅ Allowlist ({} manual events)".format(len(cache.get("allowlist_events", [])))):
             _al_events = cache.get("allowlist_events", [])
-
-            # Show existing allowlist entries
             if _al_events:
                 for i, _ev in enumerate(_al_events):
                     c1, c2 = st.columns([5, 1])
@@ -750,15 +704,13 @@ else:
                 ]
                 _sel_idx = st.selectbox("Pick event to duplicate", range(len(_event_labels)),
                                         format_func=lambda i: _event_labels[i], key="dup_select")
-                # Reset subtitle field when selection changes
+                # Reset fields when selection changes
                 if st.session_state.get("dup_select_prev") != _sel_idx:
                     st.session_state["dup_select_prev"] = _sel_idx
-                    if "dup_sub" in st.session_state:
-                        del st.session_state["dup_sub"]
-                    if "dup_date" in st.session_state:
-                        del st.session_state["dup_date"]
-                    if "dup_id" in st.session_state:
-                        del st.session_state["dup_id"]
+                    for k in ["dup_sub", "dup_date", "dup_id", "dup_date_prev"]:
+                        if k in st.session_state:
+                            del st.session_state[k]
+
                 if _sel_idx > 0:
                     _src = _fetched_events[_sel_idx - 1]
                     st.caption("**Title:** {}".format(_src.get("title","")))
@@ -767,7 +719,7 @@ else:
                     _dup_date = st.text_input("New Date", key="dup_date", placeholder="e.g. 18 Apr")
                     _dup_year = st.text_input("New Year", key="dup_year", placeholder="e.g. 2026", value=str(now.year))
 
-                    # Auto-replace date in subtitle when date changes
+                    # Auto-replace date in subtitle
                     _src_sub = _src.get("subtitle", "")
                     _src_date = _src.get("date_display", "")
                     if _dup_date.strip():
@@ -786,16 +738,15 @@ else:
                     else:
                         _auto_sub = _src_sub
 
-                    # Force subtitle to update in session state when date changes
-                    # Force subtitle to update when date OR selected event changes
-                    if (st.session_state.get("dup_date_prev") != _dup_date or
-                            st.session_state.get("dup_sel_prev") != _sel_idx):
+                    # Update subtitle in session state when date or event changes
+                    if st.session_state.get("dup_date_prev") != _dup_date:
                         st.session_state["dup_date_prev"] = _dup_date
-                        st.session_state["dup_sel_prev"] = _sel_idx
                         st.session_state["dup_sub"] = _auto_sub
-                    elif "dup_sub" not in st.session_state:
+                    if "dup_sub" not in st.session_state:
                         st.session_state["dup_sub"] = _auto_sub
+
                     _dup_sub = st.text_input("Subtitle", key="dup_sub")
+
                     if st.button("📋 Duplicate to Allowlist"):
                         if _dup_id.strip().isdigit() and _dup_date.strip():
                             sv, dd, _ = parse_date(_dup_date.strip() + " " + _dup_year.strip())
@@ -812,5 +763,7 @@ else:
                             st.success("Duplicated as {}!".format(dd)); st.rerun()
                         else:
                             st.error("Please enter a valid ID and date.")
+
+        if st.button("🔍 Fetch Now", use_container_width=True):
             st.session_state.fetch_requested = True
             st.rerun()
