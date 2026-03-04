@@ -204,6 +204,10 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
     errors = []
 
     for q in queries:
+        # Extract the month and year this query was built for — used to validate parsed dates
+        q_month_match = re.search(r'"([A-Za-z]{3})".*?"(\d{4})"', q)
+        q_month_num = MONTH_ORDER.get(q_month_match.group(1).lower()) if q_month_match else None
+        q_year = int(q_month_match.group(2)) if q_month_match else None
         params = {"engine": "google", "q": q, "api_key": serpapi_key, "num": 20}
         try:
             resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
@@ -264,10 +268,15 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
 
                 clean_title = remove_noise(re.sub(r'\s*[⟋|]\s*RA\s*$', '', raw_title).strip())
                 full_sub = remove_noise(clean_subheading(raw_snippet))
-                # Parse date from full snippet (not just cleaned sub) to catch dates buried deep
-                sort_val, date_display, ev_year = parse_date(raw_snippet)
+                # Parse date from start of snippet (first 80 chars) or title
+                sort_val, date_display, ev_year = parse_date(raw_snippet[:80])
                 if sort_val == 9999:
-                    sort_val, date_display, ev_year = parse_date(full_sub)
+                    sort_val, date_display, ev_year = parse_date(raw_title)
+                # Validate: parsed month must match the query month that returned this result.
+                # If it doesn't, the date came from a sidebar/related event in the snippet — discard.
+                if q_month_num is not None and sort_val != 9999:
+                    if (sort_val // 100) != q_month_num:
+                        continue
                 verified.append({
                     "title": clean_title,
                     "url": href,
