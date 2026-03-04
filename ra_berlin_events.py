@@ -745,6 +745,15 @@ else:
                 ]
                 _sel_idx = st.selectbox("Pick event to duplicate", range(len(_event_labels)),
                                         format_func=lambda i: _event_labels[i], key="dup_select")
+                # Reset subtitle field when selection changes
+                if st.session_state.get("dup_select_prev") != _sel_idx:
+                    st.session_state["dup_select_prev"] = _sel_idx
+                    if "dup_sub" in st.session_state:
+                        del st.session_state["dup_sub"]
+                    if "dup_date" in st.session_state:
+                        del st.session_state["dup_date"]
+                    if "dup_id" in st.session_state:
+                        del st.session_state["dup_id"]
                 if _sel_idx > 0:
                     _src = _fetched_events[_sel_idx - 1]
                     st.caption("**Title:** {}".format(_src.get("title","")))
