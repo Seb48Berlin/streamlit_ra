@@ -166,6 +166,9 @@ def remove_noise(text):
     # Remove leftover lone asterisks
     text = re.sub(r'\*', '', text)
     text = re.sub(r'Interested[:.] *\d+', '', text, flags=re.IGNORECASE)
+    # Remove RA copyright notices
+    text = re.sub(r'\u00a9\s*\d{4}\s*Resident Advisor[^.]*\.?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'All rights reserved\.?', '', text, flags=re.IGNORECASE)
     # Collapse multiple separators: ··, --, · ·, etc.
     text = re.sub(r'([·\-–—|])\s*\1+', r'\1', text)
     text = re.sub(r'\s*[·\-–—|]\s*$', '', text)   # trailing separator
