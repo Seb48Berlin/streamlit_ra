@@ -482,7 +482,7 @@ with st.container():
     if not st.session_state.admin:
         with st.expander(" ", expanded=False):
             pw = st.text_input("Password", type="password", key="admin_pw",
-                               label_visibility="collapsed", placeholder="Admin password")
+                               label_visibility="collapsed")
             if st.button("Login", key="admin_login", use_container_width=True):
                 if pw == ADMIN_PASSWORD:
                     st.session_state.admin = True
