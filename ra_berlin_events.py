@@ -792,8 +792,11 @@ else:
                             st.session_state.get("dup_sel_prev") != _sel_idx):
                         st.session_state["dup_date_prev"] = _dup_date
                         st.session_state["dup_sel_prev"] = _sel_idx
-                    _dup_sub = st.text_input("Subtitle", key="dup_sub",
-                                             placeholder="Subtitle (auto-updated from date)…")
+                        st.session_state["dup_sub"] = _auto_sub
+                    elif "dup_sub" not in st.session_state:
+                        st.session_state["dup_sub"] = _auto_sub
+                    _dup_sub = st.text_input("Subtitle", key="dup_sub")
+                    _dup_sub = st.text_input("Subtitle", key="dup_sub")
                     if st.button("📋 Duplicate to Allowlist"):
                         if _dup_id.strip().isdigit() and _dup_date.strip():
                             sv, dd, _ = parse_date(_dup_date.strip() + " " + _dup_year.strip())
@@ -810,7 +813,5 @@ else:
                             st.success("Duplicated as {}!".format(dd)); st.rerun()
                         else:
                             st.error("Please enter a valid ID and date.")
-
-        if st.button("🔍 Fetch Now", use_container_width=True):
             st.session_state.fetch_requested = True
             st.rerun()
