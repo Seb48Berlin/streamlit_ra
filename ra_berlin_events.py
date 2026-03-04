@@ -699,20 +699,23 @@ else:
                 st.success("Saved {} custom name keywords".format(len(new_nbl)))
 
         with st.expander("✅ Allowlist ({} manual events)".format(len(cache.get("allowlist_events", [])))):
-            st.caption("Manually add events that aren't fetched automatically:")
             _al_events = cache.get("allowlist_events", [])
-            # Show existing
-            for i, _ev in enumerate(_al_events):
-                c1, c2 = st.columns([5, 1])
-                c1.caption("**{}** · {} · {}".format(_ev.get("title",""), _ev.get("date_display",""), _ev.get("url","")))
-                if c2.button("✕", key="al_del_{}".format(i)):
-                    _al_events.pop(i); cache["allowlist_events"] = _al_events; save_cache(cache); st.rerun()
-            st.markdown("**Add event:**")
-            _al_id   = st.text_input("RA Event ID", key="al_id", placeholder="e.g. 2372095")
-            _al_title = st.text_input("Title", key="al_title", placeholder="e.g. SINGULARITY x Loone bei Loone, Berlin")
+
+            # Show existing allowlist entries
+            if _al_events:
+                for i, _ev in enumerate(_al_events):
+                    c1, c2 = st.columns([5, 1])
+                    c1.caption("**{}** · {} · {}".format(_ev.get("title",""), _ev.get("date_display",""), _ev.get("url","")))
+                    if c2.button("✕", key="al_del_{}".format(i)):
+                        _al_events.pop(i); cache["allowlist_events"] = _al_events; save_cache(cache); st.rerun()
+
+            st.markdown("---")
+            st.markdown("**➕ Add manually:**")
+            _al_id    = st.text_input("RA Event ID", key="al_id", placeholder="e.g. 2372095")
+            _al_title = st.text_input("Title", key="al_title", placeholder="e.g. SINGULARITY x Loone")
             _al_date  = st.text_input("Date", key="al_date", placeholder="e.g. 22 Mar")
             _al_year  = st.text_input("Year", key="al_year", placeholder="e.g. 2026")
-            _al_sub   = st.text_input("Subtitle (optional)", key="al_sub", placeholder="e.g. Venue name · techno · free entry")
+            _al_sub   = st.text_input("Subtitle (optional)", key="al_sub", placeholder="e.g. Venue · techno · free entry")
             if st.button("➕ Add to Allowlist"):
                 if _al_id.strip().isdigit() and _al_title.strip() and _al_date.strip():
                     sv, dd, _ = parse_date(_al_date.strip() + " " + _al_year.strip())
@@ -729,6 +732,42 @@ else:
                     st.success("Added!"); st.rerun()
                 else:
                     st.error("Please fill in ID, title and date.")
+
+            st.markdown("---")
+            st.markdown("**📋 Duplicate fetched event with new date:**")
+            _fetched_events = cache.get("events", [])
+            if not _fetched_events:
+                st.caption("No fetched events available yet.")
+            else:
+                _event_labels = ["— select —"] + [
+                    "{} · {}".format(e.get("date_display","?"), e.get("title","?"))
+                    for e in _fetched_events
+                ]
+                _sel_idx = st.selectbox("Pick event to duplicate", range(len(_event_labels)),
+                                        format_func=lambda i: _event_labels[i], key="dup_select")
+                if _sel_idx > 0:
+                    _src = _fetched_events[_sel_idx - 1]
+                    st.caption("**Title:** {}".format(_src.get("title","")))
+                    st.caption("**Subtitle:** {}".format(_src.get("subtitle","")))
+                    _dup_id   = st.text_input("New RA Event ID", key="dup_id", placeholder="e.g. 2380001")
+                    _dup_date = st.text_input("New Date", key="dup_date", placeholder="e.g. 18 Apr")
+                    _dup_year = st.text_input("New Year", key="dup_year", placeholder="e.g. 2026", value=str(now.year))
+                    if st.button("📋 Duplicate to Allowlist"):
+                        if _dup_id.strip().isdigit() and _dup_date.strip():
+                            sv, dd, _ = parse_date(_dup_date.strip() + " " + _dup_year.strip())
+                            _al_events.append({
+                                "title": _src.get("title", ""),
+                                "url": "https://ra.co/events/{}".format(_dup_id.strip()),
+                                "date_display": dd,
+                                "date_sort": sv,
+                                "date_year": int(_dup_year.strip()) if _dup_year.strip().isdigit() else now.year,
+                                "subtitle": _src.get("subtitle", ""),
+                                "manual": True
+                            })
+                            cache["allowlist_events"] = _al_events; save_cache(cache)
+                            st.success("Duplicated as {}!".format(dd)); st.rerun()
+                        else:
+                            st.error("Please enter a valid ID and date.")
 
         if st.button("🔍 Fetch Now", use_container_width=True):
             st.session_state.fetch_requested = True
