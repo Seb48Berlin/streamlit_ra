@@ -765,33 +765,32 @@ else:
                     _dup_date = st.text_input("New Date", key="dup_date", placeholder="e.g. 18 Apr")
                     _dup_year = st.text_input("New Year", key="dup_year", placeholder="e.g. 2026", value=str(now.year))
 
-                    # Auto-replace date in subtitle as user types
+                    # Auto-replace date in subtitle when date changes
                     _src_sub = _src.get("subtitle", "")
                     _src_date = _src.get("date_display", "")
-                    _dup_date_val = st.session_state.get("dup_date", _dup_date)
-                    _dup_year_val = st.session_state.get("dup_year", _dup_year)
                     if _dup_date.strip():
                         _, _new_dd, _ = parse_date(_dup_date.strip() + " " + _dup_year.strip())
-                        # Try to get full weekday string for subtitle replacement
                         try:
                             _new_dt = datetime.strptime("{} {}".format(_dup_date.strip(), _dup_year.strip()), "%d %b %Y")
                             _new_date_long = _new_dt.strftime("%a, %d %b %Y")
                         except Exception:
                             _new_date_long = _new_dd
-                        # Replace any date-like pattern in subtitle with new date
                         _auto_sub = re.sub(
                             r'(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\n]*\d{4}',
                             _new_date_long, _src_sub, flags=re.IGNORECASE
                         )
                         if _auto_sub == _src_sub and _src_date:
-                            # fallback: replace the original date_display string
                             _auto_sub = _src_sub.replace(_src_date, _new_dd)
                     else:
                         _auto_sub = _src_sub
 
+                    # Force subtitle to update in session state when date changes
+                    if st.session_state.get("dup_date_prev") != _dup_date:
+                        st.session_state["dup_date_prev"] = _dup_date
+                        st.session_state["dup_sub"] = _auto_sub
+
                     _dup_sub = st.text_input("Subtitle", key="dup_sub",
-                                             value=_auto_sub,
-                                             placeholder="Edit subtitle for this date…")
+                                             placeholder="Subtitle (auto-updated from date)…")
                     if st.button("📋 Duplicate to Allowlist"):
                         if _dup_id.strip().isdigit() and _dup_date.strip():
                             sv, dd, _ = parse_date(_dup_date.strip() + " " + _dup_year.strip())
