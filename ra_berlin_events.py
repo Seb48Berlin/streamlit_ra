@@ -211,9 +211,6 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
                 event_id = next((p for p in reversed(parts) if p.isdigit()), parts[-1])
                 if href in seen_urls or event_id in seen_urls:
                     continue
-                # Reject events older than 2026 (ID below lowest 2026 event)
-                if event_id.isdigit() and int(event_id) < 2282156:
-                    continue
                 all_blocked = BLOCKED_EVENT_IDS | set(cache_blocklist or [])
                 if event_id in all_blocked:
                     continue
