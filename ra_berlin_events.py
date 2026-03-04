@@ -17,10 +17,12 @@ ADMIN_PASSWORD = "admin1234"  # change this
 BLOCKED_EVENT_IDS = {
     "2327169",  # ELATA x GROOVE THEORY at ÆDEN
     "2094386",  # Birgits Weekender May 2025 (paid)
+    "2328803",  # past Jan event, false positive
 }
 
 # Blocklist: event name keywords — events whose title contains any of these are blocked
 BLOCKED_NAME_KEYWORDS = [
+    "Birgits Weekender",  # partially free only, main event is paid
 ]
 
 MONTH_ORDER = {
@@ -36,10 +38,14 @@ def get_now():
 
 
 def get_search_months(now):
-    """Return (current_month_abbr, next_month_abbr, year_str) for search query."""
+    """Return (m1, m2, m3, y1, y2, y3) for the current + next 2 months."""
     this = now.replace(day=1)
     nxt = (this + timedelta(days=32)).replace(day=1)
-    return this.strftime("%b"), nxt.strftime("%b"), now.strftime("%Y"), nxt.strftime("%Y")
+    nxt2 = (nxt + timedelta(days=32)).replace(day=1)
+    return (
+        this.strftime("%b"), nxt.strftime("%b"), nxt2.strftime("%b"),
+        this.strftime("%Y"), nxt.strftime("%Y"), nxt2.strftime("%Y"),
+    )
 
 
 def slot_label(dt):
@@ -67,6 +73,7 @@ def remove_noise(text):
     text = re.sub(r'\*?\s*free\s*(entry|ticket)\s*\*?', ' ', text, flags=re.IGNORECASE)
     # Remove leftover lone asterisks
     text = re.sub(r'\*', '', text)
+    text = re.sub(r'Interested[:.] *\d+', '', text, flags=re.IGNORECASE)
     # Collapse multiple separators: ··, --, · ·, etc.
     text = re.sub(r'([·\-–—|])\s*\1+', r'\1', text)
     text = re.sub(r'\s*[·\-–—|]\s*$', '', text)   # trailing separator
@@ -171,14 +178,17 @@ def snippet_confirms_free_entry(title_raw, snippet_raw, highlighted_words=None):
 
 
 def build_queries(now):
-    m1, m2, y1, y2 = get_search_months(now)
-    # Search multiple free entry phrasings to catch German, alternative English etc.
+    m1, m2, m3, y1, y2, y3 = get_search_months(now)
+    months = [(m1, y1), (m2, y2), (m3, y3)]
     free_phrases = ["Free Entry", "Free Ticket", "Free Admission", "Eintritt frei", "freier Eintritt"]
     queries = []
+    seen = set()
     for phrase in free_phrases:
-        queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m1, y1))
-        if m2 != m1:
-            queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m2, y2))
+        for m, y in months:
+            key = (phrase, m, y)
+            if key not in seen:
+                seen.add(key)
+                queries.append('site:ra.co/events "Berlin" "{}" "{}" "{}"'.format(phrase, m, y))
     return queries
 
 
@@ -195,14 +205,21 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
             resp.raise_for_status()
             for r in resp.json().get("organic_results", []):
                 href = r.get("link", "")
-                if "ra.co/events" not in href or href in seen_urls:
+                if "ra.co/events" not in href:
                     continue
-                # Check blocklist by event ID (hardcoded + admin-added)
-                event_id = href.rstrip("/").split("/")[-1]
+                # Normalize: strip query params + locale prefix (de/es/fr.ra.co → ra.co)
+                href = re.split(r'[?#]', href)[0]
+                href = re.sub(r'https?://[a-z]{2}\.ra\.co', 'https://ra.co', href)
+                # Extract numeric event ID, deduplicate by both URL and ID
+                parts = href.rstrip("/").split("/")
+                event_id = next((p for p in reversed(parts) if p.isdigit()), parts[-1])
+                if href in seen_urls or event_id in seen_urls:
+                    continue
                 all_blocked = BLOCKED_EVENT_IDS | set(cache_blocklist or [])
                 if event_id in all_blocked:
                     continue
                 seen_urls.add(href)
+                seen_urls.add(event_id)
 
                 raw_title = r.get("title", "")
                 raw_snippet = r.get("snippet", "")
@@ -258,8 +275,8 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
     # Filter: keep only future events in current+next month and correct year
     now_sort = now.month * 100 + now.day
     current_year = now.year
-    m1, m2, y1, y2 = get_search_months(now)
-    valid_months = {MONTH_ORDER[m1.lower()[:3]], MONTH_ORDER[m2.lower()[:3]]}
+    m1, m2, m3, y1, y2, y3 = get_search_months(now)
+    valid_months = {MONTH_ORDER[m1.lower()[:3]], MONTH_ORDER[m2.lower()[:3]], MONTH_ORDER[m3.lower()[:3]]}
 
     filtered = []
     for ev in verified:
@@ -282,10 +299,12 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
 
 
 def fetch_via_anthropic(api_key, now):
-    m1, m2, y1, y2 = get_search_months(now)
+    m1, m2, m3, y1, y2, y3 = get_search_months(now)
     months_str = '"{}" "{}"'.format(m1, y1)
     if m2 != m1:
         months_str += ' OR "{}" "{}"'.format(m2, y2)
+    if m3 != m2:
+        months_str += ' OR "{}" "{}"'.format(m3, y3)
     system_prompt = """You are a data extraction assistant. Search the web and return ONLY a JSON array of Berlin techno free entry events from ra.co.
 Each item must have:
   - title: event name with "free entry" (any case/brackets/asterisks) fully removed
@@ -395,8 +414,8 @@ with st.sidebar:
         else:
             st.warning("⏳ Next: **{}** ({} h {} min)".format(nxt.strftime("%H:%M"), h_left, m_left))
 
-        m1, m2, y1, y2 = get_search_months(now)
-        st.markdown("**🔍 Searching:** {} {} + {} {}".format(m1, y1, m2, y2))
+        m1, m2, m3, y1, y2, y3 = get_search_months(now)
+        st.markdown("**🔍 Searching:** {} {} · {} {} · {} {}".format(m1, y1, m2, y2, m3, y3))
 
         st.markdown("---")
         budget = 93
@@ -451,10 +470,8 @@ with st.sidebar:
                 save_cache(cache)
                 st.success("Saved {} custom name keywords".format(len(new_nbl)))
 
-        fetch_btn = st.button("🔍 Fetch Now", use_container_width=True,
-                              disabled=(not in_slot and not no_cache_yet))
-        if not in_slot and not no_cache_yet:
-            st.caption("Auto-fetches at 11:00, 16:00, 21:00")
+        fetch_btn = st.button("🔍 Fetch Now", use_container_width=True)
+
     # end admin block
 
 # ── Resolve backend/keys from cache if not admin ──────────────────────────────
