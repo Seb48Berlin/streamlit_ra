@@ -586,14 +586,23 @@ else:
         title = ev.get("title", "")
         url = ev.get("url", "")
 
+        # Add weekday prefix to date_str
+        date_label = date_str
+        if date_str:
+            try:
+                ev_year = ev.get("date_year") or now.year
+                _d = datetime.strptime("{} {}".format(date_str, ev_year), "%d %b %Y")
+                date_label = "{} {}".format(_d.strftime("%a"), date_str)
+            except Exception:
+                pass
+
         # Layout: date pill | clickable title + full subtitle
         col1, col2 = st.columns([1, 7])
         with col1:
-            if date_str:
-                # Simple clean date badge — just text, no black box
+            if date_label:
                 st.markdown(
-                    '<div style="color:#888;font-size:0.85rem;font-weight:600;'
-                    'padding-top:4px;text-align:center;">{}</div>'.format(date_str),
+                    '<div style="color:#fff;font-size:1.05rem;font-weight:700;'
+                    'padding-top:4px;text-align:center;text-shadow:0 1px 3px rgba(0,0,0,0.9);">{}</div>'.format(date_label),
                     unsafe_allow_html=True
                 )
         with col2:
