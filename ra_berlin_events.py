@@ -33,7 +33,7 @@ if _bg_url:
         "[data-testid='stMain'], [data-testid='block-container'] { background: transparent; }"
         "h1, h2, h3, p, span, div, label { color: #fff !important;"
         "  text-shadow: 0 1px 4px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.9) !important; }"
-        ".stExpander { background: rgba(0,0,0,0.65) !important; }"
+        ".stExpander { background: rgba(0,0,0,0.15) !important; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.1) !important; }""details[data-testid='stExpander'] { background: transparent !important; }""details[data-testid='stExpander']:hover { background: rgba(0,0,0,0.25) !important; }""details[data-testid='stExpander'] summary { background: transparent !important; }""[data-testid='stExpanderDetails'] { background: transparent !important; }"
         "</style>",
         unsafe_allow_html=True)
 
