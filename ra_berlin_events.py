@@ -537,9 +537,9 @@ st.markdown(
     "<style>"
     "[data-testid='stMainBlockContainer'] { padding-top: 1rem !important; }"
     "</style>"
-    "<h1 style='margin-top:0;padding-top:0;font-size:2.2rem;font-weight:800;letter-spacing:0.02em;'>"
-    "FreeBerlin.Tech"
-    "<span style='color:#fff;text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000;'>no</span>"
+    "<h1 style='margin-top:0;padding-top:0;font-size:2.2rem;font-weight:800;letter-spacing:0.02em;text-shadow:none;'>"
+    "<span style='color:#111 !important;-webkit-text-stroke:0.5px #fff;text-shadow:none !important;'>FreeBerlin.Tech</span>"
+    "<span style='color:#fff !important;-webkit-text-stroke:0.5px #111;text-shadow:none !important;'>no</span>"
     "</h1>",
     unsafe_allow_html=True)
 
