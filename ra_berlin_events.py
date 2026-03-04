@@ -470,9 +470,11 @@ for _manual_ev in cache.get("allowlist_events", []):
 events.sort(key=lambda x: (x.get("date_year") or now.year, x["date_sort"]))
 
 if not events:
-    st.info("🕐 No events cached yet. Admin login required to fetch.")
+    if not cache.get("allowlist_events"):
+        st.info("🕐 No events cached yet. Admin login required to fetch.")
 else:
-    st.caption("Last updated: {} *(cached)*".format(fetched_at or "unknown"))
+    if fetched_at:
+        st.caption("Last updated: {} *(cached)*".format(fetched_at))
     st.divider()
 
     for ev in events:
@@ -597,6 +599,7 @@ else:
             _al_title = st.text_input("Title", key="al_title", placeholder="e.g. SINGULARITY x Loone bei Loone, Berlin")
             _al_date  = st.text_input("Date", key="al_date", placeholder="e.g. 22 Mar")
             _al_year  = st.text_input("Year", key="al_year", placeholder="e.g. 2026")
+            _al_sub   = st.text_input("Subtitle (optional)", key="al_sub", placeholder="e.g. Venue name · techno · free entry")
             if st.button("➕ Add to Allowlist"):
                 if _al_id.strip().isdigit() and _al_title.strip() and _al_date.strip():
                     sv, dd, _ = parse_date(_al_date.strip() + " " + _al_year.strip())
@@ -606,7 +609,7 @@ else:
                         "date_display": dd,
                         "date_sort": sv,
                         "date_year": int(_al_year.strip()) if _al_year.strip().isdigit() else now.year,
-                        "subtitle": "",
+                        "subtitle": _al_sub.strip(),
                         "manual": True
                     })
                     cache["allowlist_events"] = _al_events; save_cache(cache)
