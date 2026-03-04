@@ -533,7 +533,15 @@ if should_fetch:
 
 # ── Display ───────────────────────────────────────────────────────────────────
 
-st.title("Techno Berlin Free Entry")
+st.markdown(
+    "<style>"
+    "[data-testid='stMainBlockContainer'] { padding-top: 1rem !important; }"
+    "</style>"
+    "<h1 style='margin-top:0;padding-top:0;font-size:2.2rem;font-weight:800;letter-spacing:0.02em;'>"
+    "FreeBerlin.Tech"
+    "<span style='color:#fff;text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000;'>no</span>"
+    "</h1>",
+    unsafe_allow_html=True)
 
 events = cache.get("events", [])
 fetched_at = cache.get("fetched_at")
