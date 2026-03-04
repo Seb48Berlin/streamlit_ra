@@ -45,7 +45,7 @@ header[data-testid="stHeader"] {{
 #MainMenu, footer {{
     display: none !important;
 }}
-h1, h2, h3, p, span, div, label {{
+h2, h3, p, label {{
     color: #fff !important;
     text-shadow: 0 1px 4px rgba(0,0,0,0.8) !important;
 }}
