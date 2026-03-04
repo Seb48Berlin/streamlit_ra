@@ -49,6 +49,7 @@ h2, h3, p, label {{
     color: #fff !important;
     text-shadow: 0 1px 4px rgba(0,0,0,0.8) !important;
 }}
+#title-no {{ color: #fff !important; -webkit-text-stroke: 0.6px #000 !important; text-shadow: none !important; }}
 /* Expander — fully transparent, no hover effect */
 .stExpander,
 .stExpander summary,
@@ -539,7 +540,7 @@ st.markdown(
     "</style>"
     "<h1 style='margin-top:0;padding-top:0;font-size:2.2rem;font-weight:800;letter-spacing:0.02em;text-shadow:none;'>"
     "<span style='color:#111 !important;-webkit-text-stroke:0.5px #fff;text-shadow:none !important;'>FreeBerlin.Tech</span>"
-    "<span style='color:#fff !important;-webkit-text-stroke:0.5px #111;text-shadow:none !important;'>no</span>"
+    "<span id='title-no' style='color:#fff !important;-webkit-text-stroke:0.6px #000 !important;text-shadow:none !important;'>no</span>"
     "</h1>",
     unsafe_allow_html=True)
 
