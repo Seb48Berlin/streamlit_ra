@@ -210,19 +210,23 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
             resp.raise_for_status()
             for r in resp.json().get("organic_results", []):
                 href = r.get("link", "")
-                if "ra.co/events" not in href or href in seen_urls:
+                if "ra.co/events" not in href:
                     continue
-                # Extract numeric event ID — strip query string first, handle /events/ID or /events/ID/slug
-                href_clean = re.split(r'[?#]', href)[0]
-                parts = href_clean.rstrip("/").split("/")
+                # Normalize immediately: strip query params + locale prefix (de/es/fr.ra.co → ra.co)
+                href = re.split(r'[?#]', href)[0]
+                href = re.sub(r'https?://[a-z]{2}\.ra\.co', 'https://ra.co', href)
+                if href in seen_urls:
+                    continue
+                # Extract numeric event ID and deduplicate by ID (catches slug variants)
+                parts = href.rstrip("/").split("/")
                 event_id = next((p for p in reversed(parts) if p.isdigit()), parts[-1])
+                if event_id in seen_urls:
+                    continue
                 all_blocked = BLOCKED_EVENT_IDS | set(cache_blocklist or [])
                 if event_id in all_blocked:
                     continue
-                # Strip query params and normalize locale URLs (de.ra.co → ra.co)
-                href = re.split(r'[?#]', href)[0]
-                href = re.sub(r'https?://[a-z]{2}\.ra\.co', 'https://ra.co', href)
                 seen_urls.add(href)
+                seen_urls.add(event_id)
 
                 raw_title = r.get("title", "")
                 raw_snippet = r.get("snippet", "")
