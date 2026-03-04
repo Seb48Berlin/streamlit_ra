@@ -620,8 +620,8 @@ else:
         st.markdown("**🔍 Searching:** {} {} · {} {} · {} {}".format(_m1, _y1, _m2, _y2, _m3, _y3))
 
         st.markdown("---")
-        budget = 93
-        used = cache.get("fetch_count", 0)
+        budget = 250
+        used = 125 + cache.get("fetch_count", 0)
         st.markdown("**📊 SerpAPI budget**")
         st.progress(min(used / budget, 1.0))
         st.caption("{} / {} used · {} remaining".format(used, budget, budget - used))
