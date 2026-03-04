@@ -358,35 +358,24 @@ if "admin" not in st.session_state:
 
 
 # ── Fixed bottom-left admin toggle ───────────────────────────────────────────
-st.markdown("""
-<style>
-[data-testid="collapsedControl"] { display: none !important; }
-.admin-toggle {
-    position: fixed;
-    bottom: 18px;
-    left: 18px;
-    z-index: 9999;
-    background: #1e1e1e;
-    border: 1px solid #444;
-    color: #888;
-    font-size: 13px;
-    padding: 4px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    text-decoration: none;
-    transition: all 0.2s;
-}
-.admin-toggle:hover { color: #fff; border-color: #888; }
-</style>
-<a class="admin-toggle" onclick="
-    const btn = window.parent.document.querySelector('[data-testid=\"collapsedControl\"]');
-    if(btn) btn.click();
-    else {
-        const open = window.parent.document.querySelector('[data-testid=\"stSidebarCollapseButton\"]');
-        if(open) open.click();
-    }
-">&#8250;</a>
-""", unsafe_allow_html=True)
+_toggle_html = (
+    "<style>"
+    "[data-testid=\"collapsedControl\"] { display: none !important; }"
+    ".admin-toggle {"
+    "  position: fixed; bottom: 18px; left: 18px; z-index: 9999;"
+    "  background: #1e1e1e; border: 1px solid #444; color: #888;"
+    "  font-size: 16px; padding: 4px 10px; border-radius: 6px;"
+    "  cursor: pointer; text-decoration: none; transition: all 0.2s;"
+    "}"
+    ".admin-toggle:hover { color: #fff; border-color: #888; }"
+    "</style>"
+    "<a class=\"admin-toggle\" "
+    "onclick=\"var b=window.parent.document.querySelector("
+    "'[data-testid=&quot;collapsedControl&quot;]'"
+    ");if(b)b.click();\">"
+    "&#8250;</a>"
+)
+st.markdown(_toggle_html, unsafe_allow_html=True)
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
