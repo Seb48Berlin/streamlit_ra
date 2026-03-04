@@ -796,7 +796,6 @@ else:
                     elif "dup_sub" not in st.session_state:
                         st.session_state["dup_sub"] = _auto_sub
                     _dup_sub = st.text_input("Subtitle", key="dup_sub")
-                    _dup_sub = st.text_input("Subtitle", key="dup_sub")
                     if st.button("📋 Duplicate to Allowlist"):
                         if _dup_id.strip().isdigit() and _dup_date.strip():
                             sv, dd, _ = parse_date(_dup_date.strip() + " " + _dup_year.strip())
