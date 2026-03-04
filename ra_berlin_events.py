@@ -16,7 +16,7 @@ ADMIN_PASSWORD_SALT = "2a0d557037025da91acf624ba115be8a"
 ADMIN_PASSWORD_HASH = "8bb5a82a90095fbc0b7beaf8498ee3ae7d95af7764dc19890be04ca907995ad4"
 
 # Blocklist: RA event IDs confirmed as false positives (no free entry)
-BLOCKED_EVENT_IDS = {}
+BLOCKED_EVENT_IDS = set()
 
 # Blocklist: event name keywords — events whose title contains any of these are blocked
 BLOCKED_NAME_KEYWORDS = []
