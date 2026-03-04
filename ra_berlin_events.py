@@ -3,6 +3,7 @@ import requests
 import re
 import json
 import os
+import hashlib
 from datetime import datetime, timedelta
 import pytz
 
@@ -11,7 +12,8 @@ st.set_page_config(page_title="Techno Berlin Free Entry", page_icon="🎵", layo
 BERLIN_TZ = pytz.timezone("Europe/Berlin")
 ALLOWED_HOURS = {11, 16, 21}
 CACHE_FILE = "ra_events_cache.json"
-ADMIN_PASSWORD = "admin1234"  # change this
+ADMIN_PASSWORD_SALT = "2a0d557037025da91acf624ba115be8a"
+ADMIN_PASSWORD_HASH = "8bb5a82a90095fbc0b7beaf8498ee3ae7d95af7764dc19890be04ca907995ad4"
 
 # Blocklist: RA event IDs confirmed as false positives (no free entry)
 BLOCKED_EVENT_IDS = {
@@ -484,7 +486,7 @@ with st.container():
             pw = st.text_input("Password", type="password", key="admin_pw",
                                label_visibility="collapsed")
             if st.button("Login", key="admin_login", use_container_width=True):
-                if pw == ADMIN_PASSWORD:
+                if hashlib.sha256((ADMIN_PASSWORD_SALT + pw).encode()).hexdigest() == ADMIN_PASSWORD_HASH:
                     st.session_state.admin = True
                     st.rerun()
                 else:
