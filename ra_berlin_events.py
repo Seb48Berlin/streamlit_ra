@@ -15,27 +15,89 @@ if _os.path.exists(_bg_path):
     import base64 as _b64
     with open(_bg_path, "rb") as _f:
         _bg_b64 = _b64.b64encode(_f.read()).decode()
-    _bg_url = "data:image/webp;base64," + _bg_b64
-else:
-    _bg_url = ""
+    _bg_data = "data:image/webp;base64," + _bg_b64
+    st.markdown("""
+<style>
+[data-testid="stAppViewContainer"] {{
+    background-image: url("{bg}");
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}}
+[data-testid="stAppViewContainer"]::before {{
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 0;
+    pointer-events: none;
+}}
+[data-testid="stMain"],
+[data-testid="block-container"],
+[data-testid="stAppViewBlockContainer"],
+[data-testid="stBottom"],
+header[data-testid="stHeader"] {{
+    background: transparent !important;
+}}
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],
+#MainMenu, footer {{
+    display: none !important;
+}}
+h1, h2, h3, p, span, div, label {{
+    color: #fff !important;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.8) !important;
+}}
+/* Expander — fully transparent, no hover effect */
+.stExpander,
+.stExpander summary,
+.stExpander summary:hover,
+.stExpander summary:focus,
+.stExpander > div,
+details, details summary,
+details summary:hover,
+details summary:focus,
+details:hover,
+[data-testid="stExpander"],
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] summary:hover,
+[data-testid="stExpander"] > div,
+[data-baseweb="accordion"],
+[data-baseweb="accordion"] > div,
+[data-baseweb="accordion"] > div:hover,
+[data-baseweb="block"],
+[data-testid="stBottom"] > div,
+[data-testid="stBottom"] > div:hover,
+[data-testid="stBottom"] * {{
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border-color: rgba(255,255,255,0.15) !important;
+}}
+/* Kill any white hover overlay Streamlit injects */
+[data-baseweb="accordion"] button:hover,
+[data-baseweb="accordion"] button:focus,
+[data-testid="stExpander"] button,
+[data-testid="stExpander"] button:hover {{
+    background: transparent !important;
+    background-color: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+}}
+/* Target Streamlit emotion-cache expander row and all its children */
+.ewmru5c2, .ewmru5c2 *,
+.ewmru5c2:hover, .ewmru5c2:hover *,
+.emntfgb2, .emntfgb2:hover,
+.ewmru5c3, .ewmru5c3 * {{
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+}}
+</style>
+""".format(bg=_bg_data), unsafe_allow_html=True)
 
-if _bg_url:
-    st.markdown(
-        "<style>"
-        "[data-testid='stAppViewContainer'] {"
-        "  background-image: url('" + _bg_url + "');"
-        "  background-size: cover; background-position: center; background-attachment: fixed;"
-        "}"
-        "[data-testid='stAppViewContainer']::before {"
-        "  content: ''; position: fixed; inset: 0;"
-        "  background: rgba(0,0,0,0.55); z-index: 0; pointer-events: none;"
-        "}"
-        "[data-testid='stMain'], [data-testid='block-container'] { background: transparent; }"
-        "h1, h2, h3, p, span, div, label { color: #fff !important;"
-        "  text-shadow: 0 1px 4px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.9) !important; }"
-        ".stExpander { background: rgba(0,0,0,0.15) !important; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.1) !important; }""details[data-testid='stExpander'] { background: transparent !important; }""details[data-testid='stExpander']:hover { background: rgba(0,0,0,0.25) !important; }""details[data-testid='stExpander'] summary { background: transparent !important; }""[data-testid='stExpanderDetails'] { background: transparent !important; }"
-        "</style>",
-        unsafe_allow_html=True)
+
 
 
 
