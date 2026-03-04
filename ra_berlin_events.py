@@ -166,9 +166,11 @@ def remove_noise(text):
     # Remove leftover lone asterisks
     text = re.sub(r'\*', '', text)
     text = re.sub(r'Interested[:.] *\d+', '', text, flags=re.IGNORECASE)
-    # Remove RA copyright notices
+    # Remove RA copyright notices and branding
     text = re.sub(r'\u00a9\s*\d{4}\s*Resident Advisor[^.]*\.?', '', text, flags=re.IGNORECASE)
     text = re.sub(r'All rights reserved\.?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bResident Advisor\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\s*\bRA\b\s*', ' ', text)
     # Collapse multiple separators: ··, --, · ·, etc.
     text = re.sub(r'([·\-–—|])\s*\1+', r'\1', text)
     text = re.sub(r'\s*[·\-–—|]\s*$', '', text)   # trailing separator
@@ -776,7 +778,7 @@ else:
                         except Exception:
                             _new_date_long = _new_dd
                         _auto_sub = re.sub(
-                            r'(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^\n]*\d{4}',
+                            r'(Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+\d{1,2}\s+[A-Za-z]{3}\s+\d{4}',
                             _new_date_long, _src_sub, flags=re.IGNORECASE
                         )
                         if _auto_sub == _src_sub and _src_date:
