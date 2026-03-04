@@ -7,7 +7,7 @@ import hashlib
 from datetime import datetime, timedelta
 import pytz
 
-st.set_page_config(page_title="Techno Berlin Free Entry", page_icon="🎵", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Techno Berlin Free Entry", page_icon="🎵", layout="wide")
 
 BERLIN_TZ = pytz.timezone("Europe/Berlin")
 ALLOWED_HOURS = {11, 16, 21}
@@ -16,16 +16,10 @@ ADMIN_PASSWORD_SALT = "2a0d557037025da91acf624ba115be8a"
 ADMIN_PASSWORD_HASH = "8bb5a82a90095fbc0b7beaf8498ee3ae7d95af7764dc19890be04ca907995ad4"
 
 # Blocklist: RA event IDs confirmed as false positives (no free entry)
-BLOCKED_EVENT_IDS = {
-    "2327169",  # ELATA x GROOVE THEORY at ÆDEN
-    "2094386",  # Birgits Weekender May 2025 (paid)
-    "2328803",  # past Jan event, false positive
-}
+BLOCKED_EVENT_IDS = {}
 
 # Blocklist: event name keywords — events whose title contains any of these are blocked
-BLOCKED_NAME_KEYWORDS = [
-    "Birgits Weekender",  # partially free only, main event is paid
-]
+BLOCKED_NAME_KEYWORDS = []
 
 MONTH_ORDER = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
@@ -217,6 +211,9 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
                 event_id = next((p for p in reversed(parts) if p.isdigit()), parts[-1])
                 if href in seen_urls or event_id in seen_urls:
                     continue
+                # Reject events older than 2026 (ID below lowest 2026 event)
+                if event_id.isdigit() and int(event_id) < 2282156:
+                    continue
                 all_blocked = BLOCKED_EVENT_IDS | set(cache_blocklist or [])
                 if event_id in all_blocked:
                     continue
@@ -225,6 +222,10 @@ def fetch_via_serpapi(serpapi_key, now, cache_blocklist=None, name_blocklist=Non
 
                 raw_title = r.get("title", "")
                 raw_snippet = r.get("snippet", "")
+
+                # Reject if RA title has '· Tickets' suffix — means paid event
+                if re.search(r'[·|]\s*Tickets\b', raw_title, re.IGNORECASE):
+                    continue
 
                 # Check name blocklist (hardcoded + admin-added)
                 all_name_blocked = BLOCKED_NAME_KEYWORDS + (name_blocklist or [])
@@ -357,16 +358,6 @@ Only ra.co/events URLs. No markdown. Return valid JSON array only."""
 
 if "admin" not in st.session_state:
     st.session_state.admin = False
-if "fetch_requested" not in st.session_state:
-    st.session_state.fetch_requested = False
-
-st.markdown(
-    "<style>[data-testid='collapsedControl']{display:none !important}</style>",
-    unsafe_allow_html=True)
-
-
-
-
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
@@ -379,14 +370,120 @@ nxt = next_slot(now)
 delta = nxt - now
 h_left, m_left = divmod(int(delta.total_seconds() // 60), 60)
 
-# ── SIDEBAR — hidden, kept only for Streamlit structure ─────────────────────
-with st.sidebar:
-    st.empty()
+# ── SIDEBAR (admin only) ──────────────────────────────────────────────────────
 
-# ── Resolve backend/keys from cache ──────────────────────────────────────────
-backend = cache.get("backend", "SerpAPI (Google)")
-api_key = cache.get("api_key", "")
-serpapi_key = cache.get("serpapi_key", "")
+with st.sidebar:
+    if not st.session_state.admin:
+        st.markdown("### 🔐 Admin Login")
+        pw = st.text_input("Password", type="password")
+        if st.button("Login"):
+            if hashlib.sha256((ADMIN_PASSWORD_SALT + pw).encode()).hexdigest() == ADMIN_PASSWORD_HASH:
+                st.session_state.admin = True
+                st.rerun()
+            else:
+                st.error("Wrong password")
+    else:
+        st.markdown("### ⚙️ Admin Panel")
+        if st.button("🚪 Logout"):
+            st.session_state.admin = False
+            st.rerun()
+
+        st.markdown("---")
+        backend = st.radio("Backend", ["SerpAPI (Google)", "Anthropic API (Claude + web search)"], index=0)
+
+        if "Anthropic" in backend:
+            api_key = st.text_input("Anthropic API Key", value=cache.get("api_key", ""),
+                                    type="password", placeholder="sk-ant-...")
+            serpapi_key = None
+        else:
+            api_key = None
+            serpapi_key = st.text_input("SerpAPI Key", value=cache.get("serpapi_key", ""),
+                                        type="password", placeholder="your serpapi key")
+
+        # Persist keys to cache so auto-fetch works after restart
+        if api_key and api_key != cache.get("api_key"):
+            cache["api_key"] = api_key
+            cache["backend"] = backend
+            save_cache(cache)
+        if serpapi_key and serpapi_key != cache.get("serpapi_key"):
+            cache["serpapi_key"] = serpapi_key
+            cache["backend"] = backend
+            save_cache(cache)
+
+        st.markdown("---")
+        st.markdown("**🕐 Berlin:** `{}`".format(now.strftime("%H:%M")))
+        if in_slot:
+            st.success("✅ Fetch window open")
+        else:
+            st.warning("⏳ Next: **{}** ({} h {} min)".format(nxt.strftime("%H:%M"), h_left, m_left))
+
+        m1, m2, m3, y1, y2, y3 = get_search_months(now)
+        st.markdown("**🔍 Searching:** {} {} · {} {} · {} {}".format(m1, y1, m2, y2, m3, y3))
+
+        st.markdown("---")
+        budget = 93
+        used = cache.get("fetch_count", 0)
+        st.markdown("**📊 SerpAPI budget**")
+        st.progress(min(used / budget, 1.0))
+        st.caption("{} / {} used · {} remaining".format(used, budget, budget - used))
+
+        if cache.get("fetch_log"):
+            with st.expander("Fetch history"):
+                for entry in reversed(cache["fetch_log"][-10:]):
+                    st.caption(entry)
+
+        st.markdown("---")
+        st.markdown("**🚫 Blocklists**")
+
+        # --- ID blocklist ---
+        with st.expander("🔢 Block by RA Event ID ({} hardcoded + {} custom)".format(
+            len(BLOCKED_EVENT_IDS), len(cache.get("blocklist", []))
+        )):
+            st.caption("**Hardcoded IDs** (in code — edit the .py to change):")
+            for eid in sorted(BLOCKED_EVENT_IDS):
+                st.code(eid, language=None)
+
+            st.caption("**Custom IDs** — just the number from the URL e.g. `ra.co/events/2327169`:")
+            custom_ids = list(cache.get("blocklist", []))
+            id_text = st.text_area("Custom blocked IDs", value="\n".join(custom_ids),
+                                   height=80, key="id_blocklist_input", label_visibility="collapsed",
+                                   help="One ID per line. Edit and delete lines freely, then save.")
+            if st.button("💾 Save ID Blocklist"):
+                new_bl = [x.strip() for x in id_text.splitlines() if x.strip().isdigit()]
+                cache["blocklist"] = new_bl
+                save_cache(cache)
+                st.success("Saved {} custom IDs".format(len(new_bl)))
+
+        # --- Name blocklist ---
+        with st.expander("🔤 Block by Event Name ({} hardcoded + {} custom)".format(
+            len(BLOCKED_NAME_KEYWORDS), len(cache.get("name_blocklist", []))
+        )):
+            st.caption("**Hardcoded keywords** (in code — edit the .py to change):")
+            for kw in BLOCKED_NAME_KEYWORDS:
+                st.code(kw, language=None)
+
+            st.caption("**Custom keywords** — any event title containing this text is blocked:")
+            custom_names = list(cache.get("name_blocklist", []))
+            name_text = st.text_area("Custom blocked names", value="\n".join(custom_names),
+                                     height=100, key="name_blocklist_input", label_visibility="collapsed",
+                                     help="One keyword per line. Edit and delete lines freely, then save.")
+            if st.button("💾 Save Name Blocklist"):
+                new_nbl = [x.strip() for x in name_text.splitlines() if x.strip()]
+                cache["name_blocklist"] = new_nbl
+                save_cache(cache)
+                st.success("Saved {} custom name keywords".format(len(new_nbl)))
+
+        fetch_btn = st.button("🔍 Fetch Now", use_container_width=True)
+
+    # end admin block
+
+# ── Resolve backend/keys from cache if not admin ──────────────────────────────
+if not st.session_state.admin:
+    backend = cache.get("backend", "SerpAPI (Google)")
+    api_key = cache.get("api_key", "")
+    serpapi_key = cache.get("serpapi_key", "")
+    fetch_btn = False  # non-admins can never trigger fetch
+
 # ── Auto-fetch ────────────────────────────────────────────────────────────────
 
 should_fetch = False
@@ -394,9 +491,8 @@ if no_cache_yet:
     should_fetch = True
 elif in_slot and this_slot != cache.get("slot"):
     should_fetch = True
-if st.session_state.fetch_requested:
+if st.session_state.admin and fetch_btn:
     should_fetch = True
-    st.session_state.fetch_requested = False
 
 if should_fetch:
     has_key = (api_key and "Anthropic" in backend) or (serpapi_key and "SerpAPI" in backend)
@@ -468,107 +564,3 @@ else:
                     unsafe_allow_html=True
                 )
         st.divider()
-
-
-# ── Admin panel — fixed bottom-left ──────────────────────────────────────────
-st.markdown("""
-<style>
-.admin-expander {
-    position: fixed; bottom: 0; left: 0; z-index: 9999;
-    width: 260px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-with st.container():
-    st.markdown('<div class="admin-expander">', unsafe_allow_html=True)
-    if not st.session_state.admin:
-        with st.expander(" ", expanded=False):
-            pw = st.text_input("Password", type="password", key="admin_pw",
-                               label_visibility="collapsed")
-            if st.button("Login", key="admin_login", use_container_width=True):
-                if hashlib.sha256((ADMIN_PASSWORD_SALT + pw).encode()).hexdigest() == ADMIN_PASSWORD_HASH:
-                    st.session_state.admin = True
-                    st.rerun()
-                else:
-                    st.error("Wrong password")
-    else:
-        with st.expander("⚙️ Admin", expanded=False):
-            if st.button("🚪 Logout", use_container_width=True):
-                st.session_state.admin = False
-                st.rerun()
-
-            st.markdown("---")
-            _backend = st.radio("Backend", ["SerpAPI (Google)", "Anthropic API (Claude + web search)"], index=0)
-
-            if "Anthropic" in _backend:
-                _api_key = st.text_input("Anthropic API Key", value=cache.get("api_key", ""),
-                                         type="password", placeholder="sk-ant-...")
-                _serpapi_key = None
-            else:
-                _api_key = None
-                _serpapi_key = st.text_input("SerpAPI Key", value=cache.get("serpapi_key", ""),
-                                             type="password", placeholder="your serpapi key")
-
-            if _api_key and _api_key != cache.get("api_key"):
-                cache["api_key"] = _api_key; cache["backend"] = _backend; save_cache(cache)
-            if _serpapi_key and _serpapi_key != cache.get("serpapi_key"):
-                cache["serpapi_key"] = _serpapi_key; cache["backend"] = _backend; save_cache(cache)
-
-            # Update runtime vars
-            backend = _backend
-            api_key = _api_key or ""
-            serpapi_key = _serpapi_key or ""
-
-            st.markdown("---")
-            st.markdown("**🕐 Berlin:** `{}`".format(now.strftime("%H:%M")))
-
-            _m1, _m2, _m3, _y1, _y2, _y3 = get_search_months(now)
-            st.markdown("**🔍 Searching:** {} {} · {} {} · {} {}".format(_m1, _y1, _m2, _y2, _m3, _y3))
-
-            st.markdown("---")
-            budget = 93
-            used = cache.get("fetch_count", 0)
-            st.markdown("**📊 SerpAPI budget**")
-            st.progress(min(used / budget, 1.0))
-            st.caption("{} / {} used · {} remaining".format(used, budget, budget - used))
-
-            if cache.get("fetch_log"):
-                with st.expander("Fetch history"):
-                    for entry in reversed(cache["fetch_log"][-10:]):
-                        st.caption(entry)
-
-            st.markdown("---")
-            st.markdown("**🚫 Blocklists**")
-
-            with st.expander("🔢 Block by RA Event ID ({} hardcoded + {} custom)".format(
-                len(BLOCKED_EVENT_IDS), len(cache.get("blocklist", []))
-            )):
-                st.caption("**Hardcoded IDs:**")
-                for eid in sorted(BLOCKED_EVENT_IDS):
-                    st.code(eid, language=None)
-                custom_ids = list(cache.get("blocklist", []))
-                id_text = st.text_area("Custom blocked IDs", value="\n".join(custom_ids),
-                                       height=80, key="id_blocklist_input",
-                                       label_visibility="collapsed")
-                if st.button("💾 Save ID Blocklist"):
-                    new_bl = [x.strip() for x in id_text.splitlines() if x.strip().isdigit()]
-                    cache["blocklist"] = new_bl; save_cache(cache)
-                    st.success("Saved {} custom IDs".format(len(new_bl)))
-
-            with st.expander("🔤 Block by Event Name ({} hardcoded + {} custom)".format(
-                len(BLOCKED_NAME_KEYWORDS), len(cache.get("name_blocklist", []))
-            )):
-                custom_names = list(cache.get("name_blocklist", []))
-                name_text = st.text_area("Custom blocked names", value="\n".join(custom_names),
-                                         height=100, key="name_blocklist_input",
-                                         label_visibility="collapsed")
-                if st.button("💾 Save Name Blocklist"):
-                    new_nbl = [x.strip() for x in name_text.splitlines() if x.strip()]
-                    cache["name_blocklist"] = new_nbl; save_cache(cache)
-                    st.success("Saved {} custom name keywords".format(len(new_nbl)))
-
-            if st.button("🔍 Fetch Now", use_container_width=True):
-                st.session_state.fetch_requested = True
-                st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
