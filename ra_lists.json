@@ -1,0 +1,11 @@
+{
+  "blocklist": [
+    "2365475",
+    "2208940"
+  ],
+  "name_blocklist": [
+    "Birgits"
+  ],
+  "allowlist_events": [],
+  "serpapi_count": 140
+}
