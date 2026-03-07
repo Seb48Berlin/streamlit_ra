@@ -663,7 +663,8 @@ else:
         _export_data = json.dumps({
             "blocklist": cache.get("blocklist", []),
             "name_blocklist": cache.get("name_blocklist", []),
-            "allowlist_events": cache.get("allowlist_events", [])
+            "allowlist_events": cache.get("allowlist_events", []),
+            "serpapi_count": cache.get("fetch_count", 0)
         }, indent=2)
         st.download_button("⬇️ Export Lists", data=_export_data,
                            file_name="ra_lists.json", mime="application/json",
