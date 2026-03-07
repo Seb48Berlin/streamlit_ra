@@ -97,6 +97,7 @@ details:hover,
 BERLIN_TZ = pytz.timezone("Europe/Berlin")
 ALLOWED_HOURS = {11, 16, 21}
 CACHE_FILE = "ra_events_cache.json"
+LISTS_FILE = "ra_lists.json"
 ADMIN_PASSWORD_SALT = "2a0d557037025da91acf624ba115be8a"
 ADMIN_PASSWORD_HASH = "8bb5a82a90095fbc0b7beaf8498ee3ae7d95af7764dc19890be04ca907995ad4"
 
@@ -220,6 +221,24 @@ def save_cache(data):
             json.dump(data, f)
     except Exception as e:
         st.warning("Could not save cache: {}".format(e))
+
+
+def load_lists():
+    if os.path.exists(LISTS_FILE):
+        try:
+            with open(LISTS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"blocklist": [], "name_blocklist": [], "allowlist_events": [], "serpapi_count": 0}
+
+
+def save_lists(data):
+    try:
+        with open(LISTS_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        st.warning("Could not save lists: {}".format(e))
 
 
 # ── API fetchers ──────────────────────────────────────────────────────────────
@@ -446,6 +465,12 @@ st.markdown("<style>[data-testid='collapsedControl']{display:none !important}</s
 
 now = get_now()
 cache = load_cache()
+# Merge persisted lists into cache
+_lists = load_lists()
+for _lk in ["blocklist", "name_blocklist", "allowlist_events"]:
+    if _lists.get(_lk):
+        cache[_lk] = _lists[_lk]
+cache["fetch_count"] = _lists.get("serpapi_count", 0)
 no_cache_yet = not cache.get("events")
 in_slot = now.hour in ALLOWED_HOURS
 this_slot = slot_label(now) if in_slot else None
@@ -492,6 +517,7 @@ if should_fetch:
             cache["events"] = raw
             cache["fetched_at"] = now.strftime("%d %b %Y")
             cache["fetch_count"] = cache.get("fetch_count", 0) + 1
+            save_lists({"blocklist": cache.get("blocklist",[]), "name_blocklist": cache.get("name_blocklist",[]), "allowlist_events": cache.get("allowlist_events",[]), "serpapi_count": cache.get("fetch_count", 0)})
             logs = cache.get("fetch_log", [])
             logs.append(log_entry)
             cache["fetch_log"] = logs
@@ -621,7 +647,7 @@ else:
 
         st.markdown("---")
         budget = 250
-        used = 40 + cache.get("fetch_count", 0)
+        used = cache.get("fetch_count", 0)
         st.markdown("**📊 SerpAPI budget**")
         st.progress(min(used / budget, 1.0))
         st.caption("{} / {} used · {} remaining".format(used, budget, budget - used))
@@ -633,6 +659,27 @@ else:
 
         st.markdown("---")
         st.markdown("**🚫 Blocklists**")
+        # Export lists as downloadable JSON
+        _export_data = json.dumps({
+            "blocklist": cache.get("blocklist", []),
+            "name_blocklist": cache.get("name_blocklist", []),
+            "allowlist_events": cache.get("allowlist_events", [])
+        }, indent=2)
+        st.download_button("⬇️ Export Lists", data=_export_data,
+                           file_name="ra_lists.json", mime="application/json",
+                           use_container_width=True)
+        _upload = st.file_uploader("⬆️ Import Lists", type="json", key="lists_import")
+        if _upload:
+            try:
+                _imported = json.load(_upload)
+                for _lk in ["blocklist", "name_blocklist", "allowlist_events"]:
+                    if _lk in _imported:
+                        cache[_lk] = _imported[_lk]
+                save_cache(cache)
+                save_lists({"blocklist": cache.get("blocklist",[]), "name_blocklist": cache.get("name_blocklist",[]), "allowlist_events": cache.get("allowlist_events",[]), "serpapi_count": cache.get("fetch_count", 0)})
+                st.success("Lists imported!"); st.rerun()
+            except Exception as e:
+                st.error("Import failed: {}".format(e))
 
         with st.expander("🔢 Block by RA Event ID ({} hardcoded + {} custom)".format(
             len(BLOCKED_EVENT_IDS), len(cache.get("blocklist", []))
@@ -645,7 +692,7 @@ else:
                                    height=80, key="id_blocklist_input", label_visibility="collapsed")
             if st.button("💾 Save ID Blocklist"):
                 new_bl = [x.strip() for x in id_text.splitlines() if x.strip().isdigit()]
-                cache["blocklist"] = new_bl; save_cache(cache)
+                cache["blocklist"] = new_bl; save_cache(cache); save_lists({"blocklist": cache.get("blocklist",[]), "name_blocklist": cache.get("name_blocklist",[]), "allowlist_events": cache.get("allowlist_events",[]), "serpapi_count": cache.get("fetch_count", 0)})
                 st.success("Saved {} custom IDs".format(len(new_bl)))
 
         with st.expander("🔤 Block by Event Name ({} hardcoded + {} custom)".format(
@@ -656,7 +703,7 @@ else:
                                      height=100, key="name_blocklist_input", label_visibility="collapsed")
             if st.button("💾 Save Name Blocklist"):
                 new_nbl = [x.strip() for x in name_text.splitlines() if x.strip()]
-                cache["name_blocklist"] = new_nbl; save_cache(cache)
+                cache["name_blocklist"] = new_nbl; save_cache(cache); save_lists({"blocklist": cache.get("blocklist",[]), "name_blocklist": cache.get("name_blocklist",[]), "allowlist_events": cache.get("allowlist_events",[]), "serpapi_count": cache.get("fetch_count", 0)})
                 st.success("Saved {} custom name keywords".format(len(new_nbl)))
 
         with st.expander("✅ Allowlist ({} manual events)".format(len(cache.get("allowlist_events", [])))):
@@ -666,7 +713,7 @@ else:
                     c1, c2 = st.columns([5, 1])
                     c1.caption("**{}** · {} · {}".format(_ev.get("title",""), _ev.get("date_display",""), _ev.get("url","")))
                     if c2.button("✕", key="al_del_{}".format(i)):
-                        _al_events.pop(i); cache["allowlist_events"] = _al_events; save_cache(cache); st.rerun()
+                        _al_events.pop(i); cache["allowlist_events"] = _al_events; save_cache(cache); save_lists({"blocklist": cache.get("blocklist",[]), "name_blocklist": cache.get("name_blocklist",[]), "allowlist_events": cache.get("allowlist_events",[]), "serpapi_count": cache.get("fetch_count", 0)}); st.rerun()
 
             st.markdown("---")
             st.markdown("**➕ Add manually:**")
@@ -687,7 +734,7 @@ else:
                         "subtitle": _al_sub.strip(),
                         "manual": True
                     })
-                    cache["allowlist_events"] = _al_events; save_cache(cache)
+                    cache["allowlist_events"] = _al_events; save_cache(cache); save_lists({"blocklist": cache.get("blocklist",[]), "name_blocklist": cache.get("name_blocklist",[]), "allowlist_events": cache.get("allowlist_events",[]), "serpapi_count": cache.get("fetch_count", 0)})
                     st.success("Added!"); st.rerun()
                 else:
                     st.error("Please fill in ID, title and date.")
@@ -759,7 +806,7 @@ else:
                                 "subtitle": _dup_sub.strip(),
                                 "manual": True
                             })
-                            cache["allowlist_events"] = _al_events; save_cache(cache)
+                            cache["allowlist_events"] = _al_events; save_cache(cache); save_lists({"blocklist": cache.get("blocklist",[]), "name_blocklist": cache.get("name_blocklist",[]), "allowlist_events": cache.get("allowlist_events",[]), "serpapi_count": cache.get("fetch_count", 0)})
                             st.success("Duplicated as {}!".format(dd)); st.rerun()
                         else:
                             st.error("Please enter a valid ID and date.")
